@@ -1,0 +1,434 @@
+---
+title: "Estimating the propensity score"
+author: "Luis Alvarez"
+date: "9/8/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## The selection on observables framework
+
+We consider a binary treatment $D_i$ assigned to units $i$ in the population of interest. Let $Y_i(0)$ and $Y_i(1)$ denote the potential outcomes associated with this treatment. The observed outcome is $Y_i = Y_i(0) (1-D_i)  + Y_i(1)D_i$. We will work under the assumption that there exists a vector covariates $X_i$ such that, in the population from which we draw our samples:
+
+\begin{equation}
+Y_i(0),Y_i(1) \perp D_i | X_i \quad \text{(*)}
+\end{equation}
+
+and, for some $0 < \underline{p} < \bar{p} < 1$ 
+
+\begin{equation}
+\underline{p} \leq e(x) \leq \bar{p} \quad \forall x \in \mathcal{X} \quad \text{(**)}
+\end{equation}
+where $\mathcal{X}$ denotes the support of $X$; and $e(x) = \mathbb{P}[D_i=1|X_i=x]$.
+
+You have seen in class that assumptions $(*)$ and $(**)$ enable identification of both ATT and ATE. Crucially, under the above assumptions:
+
+\begin{equation}
+Y_i(0), Y_i(1) \perp D_i | e(X_i) \quad \text{(***)}
+\end{equation}
+
+i.e. it sufficies to "control", in an appropriate manner, for the propensity score in order to identify ATE and ATT. Indeed, in light of this observation, most estimation methods you have seen in class involve estimating the propensity score and adjusting for it in a "smart" manner.
+
+In this note, we will show how to perform analyses under assumptions $\text{(*)}$ and $\text{(**)}$. We will follow Imbens and Rubin's approach, which proceeds in three steps. In the first step, we try to estimate a "good" propensity score; and try to ensure that $\text{(**)}$ holds, possibly by restricting our sample to ensure we are drawing from a subpopulation where overlap seems more plausible. Importantly, we do not deal with outcomes $Y_i$ in this section; all we care is between the relationship of $X_i$ and $D_i$. In the second step, if possible, we try to assess the credibility of $\text{(*)}$ in our (possibly restricted) sample, by performing some placebo checks. Finally, in the third step, we estimate our causal effects of interest. In this note, we deal with the first step. In the next TA session, we will discuss steps 2 and 3.
+
+Throughout, we work with the Lalonde dataset available on the R package Matching. The dataset store data on several variables and on participation in a job training program.
+
+
+```{r cars}
+#Loading package
+library("Matching")
+
+data(lalonde)
+
+#Outcome of interest is re78
+summary(lalonde)
+
+```
+
+## Initial balancing tests
+
+As an initial step, it is good to assess the balance in some covariates we think may be relevant for identification. This will give us an idea on how difficult it will be to estimate a good propensity score; and whether such task will be fruitful or not.
+
+We can do so by using the MatchBalance function in the Matching package.
+
+```{r}
+MatchBalance(treat~age+educ+black+nodegr+re74+re75+u74+u75+married, data = lalonde)
+```
+Imbens and Rubins also suggest reporting the normalized differences:
+
+
+$$  \frac{\bar{X}_{\text{treat}} - \bar{X}_{\text{control}}}{\sqrt{\frac{S^2_{X,\text{treat}} + S^2_{X,\text{control}}}{2}}} $$
+where $S^2_{X,\text{treat}}$ and $S^2_{X,\text{control}}$ are the sample variances in the treatment and control group. Their point is that, with a large enough sample size, a t-test will always have enough power to detect even the smallest differences in means between groups, and that may not always be helpful. In this sense, the measure above, which is in standard deviations, may be more useful in assessing balance.
+
+Let's construct a function that reports both a t-test and the normalized differences.
+```{r}
+table.test <- function(covariates, treat_var, data)
+{
+  treat_vec = data[,treat_var]
+  table = c()
+  
+  for(lab in covariates)
+  {
+    cov_vec = data[,lab]
+    control = cov_vec[treat_vec==0&!is.na(treat_vec)]
+    treatment = cov_vec[treat_vec==1&!is.na(treat_vec)]
+    
+    normalized_diff = (mean(treatment) - mean(control))/sqrt((var(treatment)+var(control))/2)
+    
+    table.line = cbind( "Mean control" = mean(control), "Mean treatment" = mean(treatment), 
+                            "t-stat" = tryCatch({t.test(control, x = treatment)$statistic}, error =function(e){NaN}), "Normalized diff" = normalized_diff)
+    
+    table = rbind(table, table.line)
+  }
+  
+  rownames(table) = covariates
+  
+  return(table)
+}
+```
+
+
+```{r}
+table.test(c("age","educ","black","nodegr","re74","re75","u74","u75","married"), "treat", lalonde)
+```
+
+## Estimating the propensity score
+
+Next, we will estimate the propensity score. The usual method is via logistic regression. Let $Z$ denote a transformation of the vector of covariates $X$. This may include linear interactions, logs and powers of the covariates in $X$. We then estimate the propensity score via MLE:
+
+\begin{equation}
+\hat{\gamma} \in \text{argmax}_{b \in \mathbb{R}^d} \sum_{i=1}^N D_i \log(\ell(Z_i'b))  + (1-D_i) \log (1 - \ell(Z_i'b)) \quad \text{(****)}
+\end{equation}
+where $\ell(\cdot)$ is the logistic link function:
+
+$$\ell(s) = \frac{\exp(s)}{1+\exp(s)}$$
+Once we estimate $\gamma$, the predicted conditional probability of treatment for observation $i$ is given by:
+
+\begin{equation}
+\hat{p}_i = \ell(\hat{\gamma}'z_i)
+\end{equation}
+where $\hat{\gamma}'z_i$ is the latent linear index.
+
+The crucial step above is to select which covariates/transformations enter $Z_i$. Recall that the goal is to have a good approximation of $e(X_i) = \mathbb{P}[D_i=1|X_i]$, so we must be flexible enough. However, we don't to be *too* flexible, otherwise we incur in *overfitting*. Indeed, note that, if $Z_i$ is flexible enough, then an upper bound to the maximization problem $\text{(****)}$, which is to set $\hat{p}_i = 1$ if $D_i=1$ and $\hat{p}_i = 0$ if $D_i=0$; may become feasible. Clearly, this is an undesirable solution, as it violates overlap in the estimated propensity score  -- indeed, most of our estimators won't even work under this solution. So we must have a principled method to select variables to be included in the propensity score that is able to balance between the two forces discussed.
+
+In this session, we will discuss two selection methods:
+
+1. Imbens and Rubin's stepwise selction method.
+2. The Lasso.
+
+### Imbens and Rubin's stepwise selection method
+Imbens and Rubin's method lets us define a ``basic'' set of covariates $X^b$, which we think should always be kept in the specification; and an additional set of covariates, $X^t$, which we will then test for inclusion. After testing for inclusion of $X^t$, we arrive at a vector $X^* = [X^{b'}, X^{a'}]'$, where $X^a$ is the selected subset of $X^t$ (it may be empty). We then test for the inclusion of linear interactions and quadratic terms of variables in $X^*$. All tests for inclusion are based on likelihood ratio statistics; and in defining thresholds in terms of these statistics for inclusion (cf. their book, or Appendix A of Imbens, 2015, for the algorithm).
+
+In the code below, we present a function that implements Imbens and Rubin's approach.
+
+```{r}
+# Imbens and Rubin's stepwise selection algorithm
+# treatment: character variable for treatment indicator variable
+# Xb: character vector with names of basic covariates: you may pass it as  c() if you do not want any basic covariate
+# Xt: character vector with names for covariates to be tested for inclusion
+# data: dataframe with variables
+# Clinear: threshold, in terms of likelihood ratio statistics, for inclusion of linear terms
+# Cquadratic: threshold, in terms of likelihood ratio statistics, for inclusion of quadratic/interaction terms
+# Intercept: does model include intercept?
+imbens.rubin.stepwise <- function(treatment, Xb, Xt, data, Clinear = 1, Cquadratic = 2.71, intercept = T)
+{
+  #Add or not intercept
+  if(intercept)
+    inter.add = "1" else inter.add = "-1"
+  
+  
+  #Formula for model
+  if(length(Xb)==0)
+    formula = paste(treatment, inter.add, sep = " ~ ") else formula = paste(treatment, paste(c(inter.add,Xb), collapse = " + "), sep = " ~ ")
+    
+  continue = T
+  
+  Xt_left = Xt
+  
+  while(continue){
+    null.model = glm(as.formula(formula), data, family = "binomial")
+    
+    null.lkl = logLik(null.model)
+    
+    test.stats = c()
+    for(covariate in Xt_left)
+    {
+      formula.test = paste(formula, covariate, sep = " + ")
+      test.model = glm(as.formula(formula.test), data, family = "binomial")
+      
+      lkl.ratio = 2*(as.numeric(logLik(test.model))-as.numeric(null.lkl))
+      test.stats = c(test.stats, lkl.ratio)
+    }
+    
+    if(max(test.stats,na.rm = T)<Clinear)
+      continue = F else {
+        
+        add.coef = Xt_left[which.max(test.stats)]
+        
+        formula = paste(formula, add.coef, sep = " + ")
+        
+        Xt_left = Xt_left[-which.max(test.stats)]
+      }
+      
+  }
+  
+  #Defining Xstar set
+  Xstar = c(Xb, Xt[!(Xt%in%Xt_left)])
+  
+  #Creating all combinations of Xstar interactions
+  combinations = expand.grid(Xstar, Xstar)
+  Xcomb = paste(combinations[,1],combinations[,2],sep=":")
+
+  continue = T
+  
+  Xcomb_left = Xcomb
+  
+  while(continue){
+    null.model = glm(as.formula(formula), data, family = "binomial")
+    
+    null.lkl = logLik(null.model)
+    
+    test.stats = c()
+    for(covariate in Xcomb_left)
+    {
+      formula.test = paste(formula, covariate, sep = " + ")
+      test.model = glm(as.formula(formula.test), data, family = "binomial")
+      
+      lkl.ratio = 2*(as.numeric(logLik(test.model))-as.numeric(null.lkl))
+      test.stats = c(test.stats, lkl.ratio)
+    }
+
+    if(max(test.stats,na.rm = T)<Cquadratic)
+      continue = F else {
+        
+        add.coef = Xcomb_left[which.max(test.stats)]
+        
+        formula = paste(formula, add.coef, sep = " + ")
+        
+        Xcomb_left = Xcomb_left[-which.max(test.stats)]
+      }
+      
+  }
+  
+  return(formula)
+}
+
+```
+
+Using the function above in our data
+
+```{r}
+formula.model = imbens.rubin.stepwise("treat",c("nodegr","black","educ"),c("age","re74","re75","u74","u75","married"), lalonde)
+
+print(formula.model)
+
+
+#Estimating the model
+ps.imbens <- glm(formula.model, family = "binomial", data = lalonde)
+
+#Loading Robust (to misspecification) SEs
+library(sandwich)
+library(lmtest)
+
+coeftest(ps.imbens, vcov. = vcovHC)
+```
+In this step, it is always good to check the robustness of our propensity score model to different choices of $X^b$ and $X^t$; $C_{\text{linear}}$ and $C_{\text{quadratic}}$.
+
+### The Lasso
+
+Lasso works by modifying $\text{(****)}$ by including a *cost-function*:
+
+$$\begin{equation}
+\hat{\gamma} \in \text{argmax}_{b \in \mathbb{R}^d} \sum_{i=1}^N D_i \log(\ell(Z_i'b))  + (1-D_i) \log (1 - \ell(Z_i'b))  + \lambda \sum_{i=1}^d |b_i|
+\end{equation}$$
+
+for some penalty constant $\lambda > 0$. The idea here is that the penalty introduces a cost for including variable $i$ in the model (i.e. setting $b_i \neq 0$). Since the marginal cost of increasing the value of $|b_i|$ is constant, the Lasso leads to solutions with *exact* zeros, making it a method of variable selection. This is in stark constrast with other "smooth" penalty functions (e.g. the Ridge). The Lasso is known to work well in "sparse" data-generating models, i.e. models where only a few of the relevant population coefficients are different from zero (i.e. only "a few", but *unknown*, transformations of $X$ truly determine the probability of selection).
+
+The package HDM of R implements post-Lasso, where we first select the variables using Lasso, and then run standard logistic regression on the selected components. This is known to ameliorate the attenuation biases induced by Lasso. The package implements data-dependent choices of penalty constant. Let's use it to estimate a propensity score model in our data.
+
+
+```{r}
+library(hdm)
+
+#I will construct a vector with powers up to order 2 of the covariates:
+X = as.matrix(lalonde[,c("educ","nodegr","age","black","re74","re75","u74","u75","married")])
+
+Z = poly(X, degree = 2, raw = T, simple = T)
+D = as.vector(lalonde[,"treat"])
+head(Z)
+ps.lasso = rlassologit(x = Z, y =  D)
+
+summary(ps.lasso)
+```
+
+
+## Assessing the quality of the estimated propensity score
+
+The next step is to assess the quality of the estimated propensity score. Recall that the propensity score is a *balancing score*, in the sense that:
+
+\begin{equation}
+X_i \perp W_i | e(X_i)
+\end{equation}
+
+So we could try to test this assumption using our estimates. Indeed, Imbens and Rubin suggest partitioning the sample in *sub-blocks*, where the estimated propensity score is approximately constant; and to conduct balancing tests within each block. They provide us with an algorithm to construct the subblocks, where we iteratively subdivide the sample based on the median propensity score. Cf the algorithm in Chapter 13 of their book. 
+
+Below, we implement their algorithm, given a sequence of estimated linear indices $Z_i'\hat{\gamma}$ of the propensity score.
+
+```{r}
+#Function that subdivides a given propensity score vector in subblocks
+#treat = vector with treatment assignments
+#lin.psm = vector with linearized PSs
+#K = how many covariates will we want to test/use in bias correction of estimates later on? 
+#t.max = threshold for tstat in making a further subdivide 
+#trim = should we discard extreme observations so there is overlap?
+propensity.score.blocks <- function(treat,lin.psm, K, t.max = 1.96,  trim =T)
+{
+  if(trim){
+    b0 = min(plogis(lin.psm[treat==1]))
+    b1 = max(plogis(lin.psm[treat==0]))
+  } else
+  {
+    b0 = 0
+    b1 = 1
+  }
+  b_vec =c(b0,b1)
+  while(TRUE)
+  {
+    J = length(b_vec)-1
+    b_vec_new = do.call(c,lapply(1:J, function(j){
+      sample = (b_vec[j] <= plogis(lin.psm)) & (plogis(lin.psm) < b_vec[j+1])
+      
+      ps.treat = lin.psm[sample&treat==1]
+      ps.control = lin.psm[sample&treat==0]
+      
+      #print(length(ps.control))
+      #print(length(ps.treat))
+      
+      t.test.pass = tryCatch({abs(t.test(ps.control, ps.treat)$statistic) > t.max}, error = function(e){return(F)})
+      
+      med.val = median(c(ps.treat, ps.control))
+      
+      Nt.below = sum(ps.treat < med.val)
+      Nt.above = sum(ps.treat >= med.val)
+      Nc.below = sum(ps.control < med.val)
+      Nc.above = sum(ps.control >= med.val)
+      
+      sample.crit = min(Nt.below, Nt.above, Nc.below, Nc.above) >= max(3, K+2)
+      
+      if(t.test.pass&sample.crit)
+        return(c(b_vec[j], plogis(med.val), b_vec[j+1])) else return(c(b_vec[j], b_vec[j+1]))
+      
+    }))
+    b_vec_new = unique(b_vec_new)
+    
+    #print(length(b_vec_new))
+    if(length(b_vec_new)==length(b_vec))
+      break else b_vec = b_vec_new
+  }
+  
+  #Constructing blocking variable now
+  block_var = rep(NA, length(treat))
+  
+  for(j in 1:(length(b_vec)-1))
+    block_var[(b_vec[j] <= plogis(lin.psm)) & (plogis(lin.psm) < b_vec[j+1])] = j
+  
+  return(block_var)
+}
+```
+
+Applying it to our data:
+
+
+```{r}
+
+lalonde$linear.ps.stepwise = predict(ps.imbens, type = "link")
+lalonde$linear.ps.lasso = predict(ps.lasso, type = "link")
+
+lalonde$blocks.stepwise = propensity.score.blocks(lalonde$treat, lalonde$linear.ps.stepwise, K =  length(c("age","educ","black","nodegr","re74","re75","u74","u75","married")))
+
+lalonde$blocks.lasso = propensity.score.blocks(lalonde$treat, lalonde$linear.ps.lasso, K =  length(c("age","educ","black","nodegr","re74","re75","u74","u75","married")))
+
+head(lalonde)
+```
+
+Let's now calculate balance within each blocL
+
+```{r}
+for(j in unique(lalonde$blocks.stepwise)[order(unique(lalonde$blocks.stepwise))])
+ if(!is.na(j))
+ {
+   print(paste("Block",j,sep= " "))
+   MatchBalance(treat~age+educ+black+nodegr+re74+re75+u74+u75+married, data = lalonde[lalonde$blocks.stepwise==j&!is.na(lalonde$blocks.stepwise),])
+ }
+
+for(j in unique(lalonde$blocks.stepwise)[order(unique(lalonde$blocks.stepwise))])
+ if(!is.na(j))
+ {
+   print(paste("Block",j,sep= " "))
+   print(table.test(c("age","educ","black","nodegr","re74","re75","u74","u75","married"), "treat", lalonde[lalonde$blocks.stepwise==j&!is.na(lalonde$blocks.stepwise),]))
+ }
+   
+
+```
+
+Since there is a lot of information, you can aggregate the statistics above to perform a global analysis. See Chapter 13 of Imben's and Rubin's book.
+
+## Trimming in order to improve overlap
+
+As argued in Imben's and Rubin's book, it suffices to test for equality of means of (a monotonic transformation) of the propensity score to assess if covariate distributions are equal in the treatment and control group (Theorem 14.1). We do so by including the linearised propensity score in our test table:
+
+```{r}
+table.test(c("age","educ","black","nodegr","re74","re75","u74","u75","married","linear.ps.stepwise"), "treat", lalonde)
+
+```
+
+From what we see above, there appears to be some, though arguably not much, imbalance in the estimated propensity score. Unbalance is undesirable, because it probably means our estimation will hinge on some unwanted level of extrapolation between individuals with different covariates, i.e. there is lack of overlap. In this case, one possibility is to *trim* the sample, so as to improve overlap. The approach in Imbens and Rubin's is based on *efficiency bound* calculations. Using semiparametric theory, we can calculate the best asymptotic variance a consistent estimator of an average treatment effect *in a subpopulation* can achieve. The idea of Imbens and Rubin is then to trim our sample so as to achieve the smallest variance (using an estimate of the bound). Note that in this approach, we change the estimand of interest, as we are looking at a more restrictive subpopulation.
+
+We implement this approach in a function below. Given a linearized propensity score, we calculate the trimming constant and return a vector which indicates which observations should be kept. See Chapter 16 in Imbens and Rubin for details.
+
+```{r}
+trimming.imbens <- function(lin.ps,step.gamma.grid = 1e-5)
+{
+ inv.vec = 1/(plogis(lin.ps)*(1-plogis(lin.ps)))
+ 
+ if(max(inv.vec)<=2*mean(inv.vec))
+ {
+   print("No trimming")
+   return(rep(T,length(lin.ps))) 
+  }else {
+     gamma.grid = seq(min(inv.vec), max(inv.vec), by = step.gamma.grid)
+     
+     values = sapply(gamma.grid, function(gamma){
+        (2*sum(inv.vec[inv.vec<=gamma])  - gamma*sum(inv.vec<=gamma))
+     })
+       
+     values[values<0] = Inf
+     
+     gamma = gamma.grid[which.min(values)]
+     
+     alpha.trim = 1/2 - sqrt(1/4 - 1/gamma)
+     print(paste("Trimming threshold alpha is ",alpha.trim))
+     return(plogis(lin.ps)<= 1-alpha.trim &  plogis(lin.ps)>=alpha.trim)
+   }
+  
+}
+```
+
+```{r}
+lalonde$keep.trim.stepwise = trimming.imbens(lalonde$linear.ps.stepwise)
+
+lalonde.rest = lalonde[lalonde$keep.trim.stepwise,]
+
+table.test(c("age","educ","black","nodegr","re74","re75","u74","u75","linear.ps.stepwise"), "treat", lalonde.rest)
+
+```
+
+Trimming improved balance a bit. If, in your case, you think it is not enough, you may want to plot the linearised propensity score in the treatment and control groups (two histograms) to see if you can visually determine where overlap fails. The important thing here is that we are *never* looking at oucomes, so we do not introduce systematic biases in our analysis. In the end, one may have to live with a bit of extrapolation.
+
+When we are interested in ATT, an alternative to trimming is to construct a matched sample, where each treated unit is matched (without replacement) to the ``closest'' (in terms of covariates) control units. This creates a sample with $2*N_{\text{treat}}$ units, which we can then use for estimating effects. I do not discuss this approach here; cf. Chapter 15 of the book for details.
+
+## References
+Imbens G. Matching Methods in Practice. Journal of Human Resources, 2015;50(2):373-419. 

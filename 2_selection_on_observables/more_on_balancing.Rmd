@@ -1,0 +1,322 @@
+---
+title: "Additional balancing tests"
+output:
+  html_document:
+    df_print: paged
+---
+
+
+```{r, include = F}
+# Imbens and Rubin's stepwise selection algorithm
+# treatment: character variable for treatment indicator variable
+# Xb: character vector with names of basic covariates: you may pass it as  c() if you do not want any basic covariate
+# Xt: character vector with names for covariates to be tested for inclusion
+# data: dataframe with variables
+# Clinear: threshold, in terms of likelihood ratio statistics, for inclusion of linear terms
+# Cquadratic: threshold, in terms of likelihood ratio statistics, for inclusion of quadratic/interaction terms
+# Intercept: does model include intercept?
+imbens.rubin.stepwise <- function(treatment, Xb, Xt, data, Clinear = 1, Cquadratic = 2.71, intercept = T)
+{
+  #Add or not intercept
+  if(intercept)
+    inter.add = "1" else inter.add = "-1"
+  
+  
+  #Formula for model
+  if(length(Xb)==0)
+    formula = paste(treatment, inter.add, sep = " ~ ") else formula = paste(treatment, paste(c(inter.add,Xb), collapse = " + "), sep = " ~ ")
+    
+  continue = T
+  
+  Xt_left = Xt
+  
+  while(continue){
+    null.model = glm(as.formula(formula), data, family = "binomial")
+    
+    null.lkl = logLik(null.model)
+    
+    test.stats = c()
+    for(covariate in Xt_left)
+    {
+      formula.test = paste(formula, covariate, sep = " + ")
+      test.model = glm(as.formula(formula.test), data, family = "binomial")
+      
+      lkl.ratio = 2*(as.numeric(logLik(test.model))-as.numeric(null.lkl))
+      test.stats = c(test.stats, lkl.ratio)
+    }
+    
+    if(max(test.stats,na.rm = T)<Clinear)
+      continue = F else {
+        
+        add.coef = Xt_left[which.max(test.stats)]
+        
+        formula = paste(formula, add.coef, sep = " + ")
+        
+        Xt_left = Xt_left[-which.max(test.stats)]
+      }
+      
+  }
+  
+  #Defining Xstar set
+  Xstar = c(Xb, Xt[!(Xt%in%Xt_left)])
+  
+  #Creating all combinations of Xstar interactions
+  combinations = expand.grid(Xstar, Xstar)
+  Xcomb = paste(combinations[,1],combinations[,2],sep=":")
+
+  continue = T
+  
+  Xcomb_left = Xcomb
+  
+  while(continue){
+    null.model = glm(as.formula(formula), data, family = "binomial")
+    
+    null.lkl = logLik(null.model)
+    
+    test.stats = c()
+    for(covariate in Xcomb_left)
+    {
+      formula.test = paste(formula, covariate, sep = " + ")
+      test.model = glm(as.formula(formula.test), data, family = "binomial")
+      
+      lkl.ratio = 2*(as.numeric(logLik(test.model))-as.numeric(null.lkl))
+      test.stats = c(test.stats, lkl.ratio)
+    }
+
+    if(max(test.stats,na.rm = T)<Cquadratic)
+      continue = F else {
+        
+        add.coef = Xcomb_left[which.max(test.stats)]
+        
+        formula = paste(formula, add.coef, sep = " + ")
+        
+        Xcomb_left = Xcomb_left[-which.max(test.stats)]
+      }
+      
+  }
+  
+  return(formula)
+}
+
+
+#Function that subdivides a given propensity score vector in subblocks
+#treat = vector with treatment assignments
+#lin.psm = vector with linearized PSs
+#K = how many covariates will we want to test/use in bias correction of estimates later on? 
+#t.max = threshold for tstat in making a further subdivide 
+#trim = should we discard extreme observations so there is overlap?
+propensity.score.blocks <- function(treat,lin.psm, K, t.max = 1.96,  trim =T)
+{
+  if(trim){
+    b0 = min(plogis(lin.psm[treat==1]))
+    b1 = max(plogis(lin.psm[treat==0]))
+  } else
+  {
+    b0 = 0
+    b1 = 1
+  }
+  b_vec =c(b0,b1)
+  while(TRUE)
+  {
+    J = length(b_vec)-1
+    b_vec_new = do.call(c,lapply(1:J, function(j){
+      sample = (b_vec[j] <= plogis(lin.psm)) & (plogis(lin.psm) < b_vec[j+1])
+      
+      ps.treat = lin.psm[sample&treat==1]
+      ps.control = lin.psm[sample&treat==0]
+      
+      #print(length(ps.control))
+      #print(length(ps.treat))
+      
+      t.test.pass = tryCatch({abs(t.test(ps.control, ps.treat)$statistic) > t.max}, error = function(e){return(F)})
+      
+      med.val = median(c(ps.treat, ps.control))
+      
+      Nt.below = sum(ps.treat < med.val)
+      Nt.above = sum(ps.treat >= med.val)
+      Nc.below = sum(ps.control < med.val)
+      Nc.above = sum(ps.control >= med.val)
+      
+      sample.crit = min(Nt.below, Nt.above, Nc.below, Nc.above) >= max(3, K+2)
+      
+      if(t.test.pass&sample.crit)
+        return(c(b_vec[j], plogis(med.val), b_vec[j+1])) else return(c(b_vec[j], b_vec[j+1]))
+      
+    }))
+    b_vec_new = unique(b_vec_new)
+    
+    #print(length(b_vec_new))
+    if(length(b_vec_new)==length(b_vec))
+      break else b_vec = b_vec_new
+  }
+  
+  #Constructing blocking variable now
+  block_var = rep(NA, length(treat))
+  
+  for(j in 1:(length(b_vec)-1))
+    block_var[(b_vec[j] <= plogis(lin.psm)) & (plogis(lin.psm) < b_vec[j+1])] = j
+  
+  return(block_var)
+}
+
+
+trimming.imbens <- function(lin.ps,step.gamma.grid = 1e-5)
+{
+ inv.vec = 1/(plogis(lin.ps)*(1-plogis(lin.ps)))
+ 
+ if(max(inv.vec)<=2*mean(inv.vec))
+ {
+   print("No trimming")
+   return(rep(T,length(lin.ps))) 
+  }else {
+     gamma.grid = seq(min(inv.vec), max(inv.vec), by = step.gamma.grid)
+     
+     values = sapply(gamma.grid, function(gamma){
+        (2*sum(inv.vec[inv.vec<=gamma])  - gamma*sum(inv.vec<=gamma))
+     })
+       
+     values[values<0] = Inf
+     
+     gamma = gamma.grid[which.min(values)]
+     
+     alpha.trim = 1/2 - sqrt(1/4 - 1/gamma)
+     print(paste("Trimming threshold alpha is ",alpha.trim))
+     return(plogis(lin.ps)<= 1-alpha.trim &  plogis(lin.ps)>=alpha.trim)
+   }
+  
+}
+
+```
+
+I'll present an additional function for you to report balancing given the propensity score. This function summarizes the t-stats across propensity score blocks, and includes two additional tests that aggregate information across blocks. The function presumes you have already constructed the blocks (e.g. using the block construction function previously provided) and left a sufficient number of observations within each block to perform analyses.
+
+Let us prepare our data for analysis.
+
+```{r}
+#Loading package
+library("Matching")
+
+data(lalonde)
+
+#Estimating the propensity score model
+formula.model = imbens.rubin.stepwise("treat",c("nodegr","black","educ"),c("age","re74","re75","u74","u75","married"), lalonde)
+ps.imbens <- glm(formula.model, family = "binomial", data = lalonde)
+lalonde$ps.linear = predict(ps.imbens, type = "link")
+
+#Blocks
+lalonde$blocks.stepwise = propensity.score.blocks(lalonde$treat, lalonde$ps.linear, K = length(c("age","educ","black","nodegr","re74","re75","u74","u75","married")))
+
+```
+
+
+The function below reports t-Tests for equality of means in the $B$ blocks. We also include, in the penultimate column, the t-test suggested by Imbens and Rubin in page 298 of the book, which aggregates t-statistics across blocks (similar in implementation to our subclassification estimator). Since this test may not have much power against the alternative that at least one block is unbalanced (a negative unbalance in a group may compensate a positive discrepancy in another group), we also include the p-value of an F-test of the null that differences in means across all blocks for a given covariate are 0. See page 298-300 of Imbens and Rubin for a discussion. With regards to the t-tests, the function allows you to impose homoskedastic standard errors, which may be a good option if there are only a few treated/control units within each block (and you think variances within each group should not differ much).
+
+```{r}
+#Package for Ftests
+library("car")
+
+#blocks - vector with block assignment
+#treat = vector with treatment indicator label
+#covariates = vector with covariate labels for us to test
+#data = dataframe with variables
+#equal = should equal variances in treatment and control groups be assumed in the t-stests? Defaults to F
+balancing.table.blocks <- function(blocks, treat, covariates, data, equal = F)
+{
+  block.value = unique(blocks[order(blocks)])
+  
+  #Removing obs discarded in trimming
+  block.value = block.value[!is.na(block.value)]
+  data = data[!is.na(blocks),]
+  
+  treat_vec  = data[,treat]
+  blocks = blocks[!is.na(blocks)]
+
+  
+  #Balancing tests across B blocks
+  mat.results = t(sapply(covariates, function(x){
+    cov_vec = data[,x]
+    
+    vec_covs = sapply(block.value, function(j){
+      cov_block_treat = cov_vec[treat_vec==1&blocks==j]
+      cov_block_control = cov_vec[treat_vec==0&blocks==j]
+      
+      return(tryCatch(t.test(cov_block_treat, cov_block_control, var.equal = equal)$statistic, error = function(e){
+        NA
+      }))
+    })
+    return(vec_covs)
+  }))
+  
+  #Estimates for each block
+  est.mat  = t(sapply(covariates, function(x){
+    cov_vec = data[,x]
+    
+    vec_covs = sapply(block.value, function(j){
+      cov_block_treat = cov_vec[treat_vec==1&blocks==j]
+      cov_block_control = cov_vec[treat_vec==0&blocks==j]
+      
+      return(mean(cov_block_treat) - mean(cov_block_control))
+    })
+    return(vec_covs)
+  }))
+  
+  #Variance estimates for each block
+  var.mat = t(sapply(covariates, function(x){
+    cov_vec = data[,x]
+    
+    vec_covs = sapply(block.value, function(j){
+      cov_block_treat = cov_vec[treat_vec==1&blocks==j]
+      cov_block_control = cov_vec[treat_vec==0&blocks==j]
+      
+      return(tryCatch({(t.test(cov_block_treat, cov_block_control, var.equal = equal)$stderr)^2}, error = function(e){NA}))
+    })
+    return(vec_covs)
+  }))
+  
+  #Weights for each block
+  weight.mat =  t(sapply(covariates, function(x){
+    cov_vec = data[,x]
+    
+    vec_covs = sapply(block.value, function(j){
+      cov_block_treat = cov_vec[treat_vec==1&blocks==j]
+      cov_block_control = cov_vec[treat_vec==0&blocks==j]
+      
+      return(sum(blocks==j)/nrow(data))})
+    return(vec_covs)
+  }))
+
+  #Adding names to table
+  rownames(mat.results) = covariates
+  colnames(mat.results) = paste("Block", block.value)
+  
+  #constructing aggregate (across blocks) t-stat
+  est.agg = rowSums(weight.mat*est.mat)
+  var.agg = rowSums((weight.mat^2)*var.mat)
+  
+  t.agg = est.agg/sqrt(var.agg)
+  
+  #Adding aggregaye statistic to results
+  mat.results = cbind(mat.results, "Aggregate t-stat" = t.agg)
+  
+  data$block.variable.ftest = blocks
+  #F-tests now
+  f.pvalues = sapply(covariates, function(x){
+    formula = paste(x, "~ -1 + as.factor(block.variable.ftest) + as.factor(block.variable.ftest):", treat,sep="")
+    unres = lm(formula, data = data)
+    coef.label = names(unres$coefficients)[grepl(treat, names(unres$coefficients))]
+    
+    tryCatch({linearHypothesis(unres, paste(coef.label, "= 0"))$`Pr(>F)`[length(coef.label)]}, error = function(e){NA})
+  })
+  
+  mat.results = cbind(mat.results, "P-values F-test" = f.pvalues)
+  
+  return(mat.results)
+}
+```
+
+Applying to our data
+
+```{r}
+balancing.table.blocks(lalonde$blocks.stepwise, "treat",c("age","educ","black","nodegr","re74","re75","u74","u75","married"), lalonde)
+```
+
