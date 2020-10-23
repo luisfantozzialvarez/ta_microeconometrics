@@ -3,6 +3,7 @@ title: "Additional balancing tests"
 output:
   html_document:
     df_print: paged
+    keep_md: true
 ---
 
 
@@ -320,3 +321,8 @@ Applying to our data
 balancing.table.blocks(lalonde$blocks.stepwise, "treat",c("age","educ","black","nodegr","re74","re75","u74","u75","married"), lalonde)
 ```
 
+## References 
+
+### Book
+
+Imbens, G., & Rubin, D. (2015). Causal Inference for Statistics, Social, and Biomedical Sciences: An Introduction. Cambridge: Cambridge University Press. doi:10.1017/CBO9781139025751

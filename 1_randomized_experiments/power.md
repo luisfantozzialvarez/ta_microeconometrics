@@ -7,18 +7,7 @@ output:
     keep_md: true
 ---
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-rm(list=ls())
-setwd("~/Dropbox/USP/dout/Monitorias/Microeconometria I/Monitorias")
-dados =  read.csv("base.merge.serie0.csv")
 
-data = data.frame(cbind("escola"=as.numeric(as.factor(dados$inep_escola1)), "aluno" = 1:nrow(dados), "logico" = as.vector(scale(dados$prop_logico_perc1)), "mulher" = dados$mulher1,
-             "idade" = dados$idade_anos1))
-data = data[order(data$escola),]
-
-write.csv(data, "dados.csv")
-```
 
 ## Power calculations via simulation
 
@@ -34,13 +23,45 @@ In the context of RCTs, (2) is known. We assume here that half of the schools wi
 
 Finally, one must consider different scenarios for the treatment effect. Most analyses consider homogeneous treatment effects, though heterogeneity seems more likely and will affect power. Let us consider the homogeneous case first.
 
-```{r}
+
+```r
 head(data)
+```
+
+```
+##     escola aluno     logico mulher    idade
+## 89       1    89 -0.6110555      1 10.30411
+## 151      1   151 -1.0899623      0 10.64384
+## 152      1   152 -0.1321487      1 11.06027
+## 235      1   235  0.5063938      0 11.26301
+## 281      1   281  1.6238429      1 11.04658
+## 290      1   290  0.1871226      1 10.62466
+```
+
+```r
 summary(data)
 ```
 
+```
+##      escola          aluno           logico             mulher      
+##  Min.   : 1.00   Min.   :  1.0   Min.   :-1.40923   Min.   :0.0000  
+##  1st Qu.: 8.00   1st Qu.:227.2   1st Qu.:-0.77069   1st Qu.:0.0000  
+##  Median :14.00   Median :453.5   Median :-0.05233   Median :0.0000  
+##  Mean   :15.19   Mean   :453.5   Mean   : 0.00000   Mean   :0.4735  
+##  3rd Qu.:23.00   3rd Qu.:679.8   3rd Qu.: 0.66603   3rd Qu.:1.0000  
+##  Max.   :30.00   Max.   :906.0   Max.   : 3.06056   Max.   :1.0000  
+##      idade       
+##  Min.   : 8.784  
+##  1st Qu.:10.661  
+##  Median :11.060  
+##  Mean   :11.219  
+##  3rd Qu.:11.402  
+##  Max.   :17.005
+```
 
-```{r}
+
+
+```r
 #Sets seed to allow for replication
 set.seed(1234)
 
@@ -127,13 +148,28 @@ tabela = cbind("Effect" =  grid, "Spec 1" = colMeans(spec1.mat), "Spec 2" = colM
 rownames(tabela) = rep("",nrow(tabela))
 
 print(tabela)
+```
 
+```
+##  Effect Spec 1 Spec 2 Spec 3
+##    0.00  0.080  0.078  0.072
+##    0.05  0.086  0.085  0.080
+##    0.10  0.127  0.127  0.136
+##    0.15  0.189  0.191  0.212
+##    0.20  0.293  0.295  0.323
+##    0.25  0.337  0.338  0.387
+##    0.30  0.489  0.492  0.537
+##    0.35  0.598  0.597  0.641
+##    0.40  0.690  0.693  0.751
+##    0.45  0.806  0.810  0.851
+##    0.50  0.853  0.850  0.887
 ```
 
 What if we want to introduce heterogeneity? For example, individual effects follow $\tau_i \sim N(\tau, 2)$.
 
 
-```{r}
+
+```r
 #Sets seed to allow for replication
 set.seed(1234)
 
@@ -220,6 +256,21 @@ tabela = cbind("Effect" =  grid, "Spec 1" = colMeans(spec1.mat), "Spec 2" = colM
 rownames(tabela) = rep("",nrow(tabela))
 
 print(tabela)
+```
+
+```
+##  Effect Spec 1 Spec 2 Spec 3
+##    0.00  0.079  0.075  0.063
+##    0.05  0.092  0.095  0.087
+##    0.10  0.108  0.110  0.114
+##    0.15  0.177  0.182  0.198
+##    0.20  0.242  0.241  0.262
+##    0.25  0.359  0.355  0.384
+##    0.30  0.394  0.397  0.444
+##    0.35  0.558  0.564  0.619
+##    0.40  0.644  0.644  0.672
+##    0.45  0.746  0.743  0.780
+##    0.50  0.797  0.799  0.843
 ```
 
 ## References

@@ -7,11 +7,7 @@ output:
     keep_md: true
 ---
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
 
-
-```
 
 In this session, we will discuss three different estimation methods for the propensity score: subclassification, matching on the estimated propensity score and inverse probability weighting. In what follows, we assume a random sample $\{Y_i,X_i,D_i\}_{i=1}^n$ from the population of interest.
 
@@ -42,192 +38,34 @@ Estimates for $\mathbb{V}[\hat{\tau}_b|\mathbf{D}, \mathbf{X}]$ are readily avai
 
 Let's implement the subclassification method in our example from the previous session. First, we just repeat some crucial steps from the previous session.
 
-```{r, include = F}
-# Imbens and Rubin's stepwise selection algorithm
-# treatment: character variable for treatment indicator variable
-# Xb: character vector with names of basic covariates: you may pass it as  c() if you do not want any basic covariate
-# Xt: character vector with names for covariates to be tested for inclusion
-# data: dataframe with variables
-# Clinear: threshold, in terms of likelihood ratio statistics, for inclusion of linear terms
-# Cquadratic: threshold, in terms of likelihood ratio statistics, for inclusion of quadratic/interaction terms
-# Intercept: does model include intercept?
-imbens.rubin.stepwise <- function(treatment, Xb, Xt, data, Clinear = 1, Cquadratic = 2.71, intercept = T)
-{
-  #Add or not intercept
-  if(intercept)
-    inter.add = "1" else inter.add = "-1"
-  
-  
-  #Formula for model
-  if(length(Xb)==0)
-    formula = paste(treatment, inter.add, sep = " ~ ") else formula = paste(treatment, paste(c(inter.add,Xb), collapse = " + "), sep = " ~ ")
-    
-  continue = T
-  
-  Xt_left = Xt
-  
-  while(continue){
-    null.model = glm(as.formula(formula), data, family = "binomial")
-    
-    null.lkl = logLik(null.model)
-    
-    test.stats = c()
-    for(covariate in Xt_left)
-    {
-      formula.test = paste(formula, covariate, sep = " + ")
-      test.model = glm(as.formula(formula.test), data, family = "binomial")
-      
-      lkl.ratio = 2*(as.numeric(logLik(test.model))-as.numeric(null.lkl))
-      test.stats = c(test.stats, lkl.ratio)
-    }
-    
-    if(max(test.stats,na.rm = T)<Clinear)
-      continue = F else {
-        
-        add.coef = Xt_left[which.max(test.stats)]
-        
-        formula = paste(formula, add.coef, sep = " + ")
-        
-        Xt_left = Xt_left[-which.max(test.stats)]
-      }
-      
-  }
-  
-  #Defining Xstar set
-  Xstar = c(Xb, Xt[!(Xt%in%Xt_left)])
-  
-  #Creating all combinations of Xstar interactions
-  combinations = expand.grid(Xstar, Xstar)
-  Xcomb = paste(combinations[,1],combinations[,2],sep=":")
-
-  continue = T
-  
-  Xcomb_left = Xcomb
-  
-  while(continue){
-    null.model = glm(as.formula(formula), data, family = "binomial")
-    
-    null.lkl = logLik(null.model)
-    
-    test.stats = c()
-    for(covariate in Xcomb_left)
-    {
-      formula.test = paste(formula, covariate, sep = " + ")
-      test.model = glm(as.formula(formula.test), data, family = "binomial")
-      
-      lkl.ratio = 2*(as.numeric(logLik(test.model))-as.numeric(null.lkl))
-      test.stats = c(test.stats, lkl.ratio)
-    }
-
-    if(max(test.stats,na.rm = T)<Cquadratic)
-      continue = F else {
-        
-        add.coef = Xcomb_left[which.max(test.stats)]
-        
-        formula = paste(formula, add.coef, sep = " + ")
-        
-        Xcomb_left = Xcomb_left[-which.max(test.stats)]
-      }
-      
-  }
-  
-  return(formula)
-}
 
 
-#Function that subdivides a given propensity score vector in subblocks
-#treat = vector with treatment assignments
-#lin.psm = vector with linearized PSs
-#K = how many covariates will we want to test/use in bias correction of estimates later on? 
-#t.max = threshold for tstat in making a further subdivide 
-#trim = should we discard extreme observations so there is overlap?
-propensity.score.blocks <- function(treat,lin.psm, K, t.max = 1.96,  trim =T)
-{
-  if(trim){
-    b0 = min(plogis(lin.psm[treat==1]))
-    b1 = max(plogis(lin.psm[treat==0]))
-  } else
-  {
-    b0 = 0
-    b1 = 1
-  }
-  b_vec =c(b0,b1)
-  while(TRUE)
-  {
-    J = length(b_vec)-1
-    b_vec_new = do.call(c,lapply(1:J, function(j){
-      sample = (b_vec[j] <= plogis(lin.psm)) & (plogis(lin.psm) < b_vec[j+1])
-      
-      ps.treat = lin.psm[sample&treat==1]
-      ps.control = lin.psm[sample&treat==0]
-      
-      #print(length(ps.control))
-      #print(length(ps.treat))
-      
-      t.test.pass = tryCatch({abs(t.test(ps.control, ps.treat)$statistic) > t.max}, error = function(e){return(F)})
-      
-      med.val = median(c(ps.treat, ps.control))
-      
-      Nt.below = sum(ps.treat < med.val)
-      Nt.above = sum(ps.treat >= med.val)
-      Nc.below = sum(ps.control < med.val)
-      Nc.above = sum(ps.control >= med.val)
-      
-      sample.crit = min(Nt.below, Nt.above, Nc.below, Nc.above) >= max(3, K+2)
-      
-      if(t.test.pass&sample.crit)
-        return(c(b_vec[j], plogis(med.val), b_vec[j+1])) else return(c(b_vec[j], b_vec[j+1]))
-      
-    }))
-    b_vec_new = unique(b_vec_new)
-    
-    #print(length(b_vec_new))
-    if(length(b_vec_new)==length(b_vec))
-      break else b_vec = b_vec_new
-  }
-  
-  #Constructing blocking variable now
-  block_var = rep(NA, length(treat))
-  
-  for(j in 1:(length(b_vec)-1))
-    block_var[(b_vec[j] <= plogis(lin.psm)) & (plogis(lin.psm) < b_vec[j+1])] = j
-  
-  return(block_var)
-}
 
-
-trimming.imbens <- function(lin.ps,step.gamma.grid = 1e-5)
-{
- inv.vec = 1/(plogis(lin.ps)*(1-plogis(lin.ps)))
- 
- if(max(inv.vec)<=2*mean(inv.vec))
- {
-   print("No trimming")
-   return(rep(T,length(lin.ps))) 
-  }else {
-     gamma.grid = seq(min(inv.vec), max(inv.vec), by = step.gamma.grid)
-     
-     values = sapply(gamma.grid, function(gamma){
-        (2*sum(inv.vec[inv.vec<=gamma])  - gamma*sum(inv.vec<=gamma))
-     })
-       
-     values[values<0] = Inf
-     
-     gamma = gamma.grid[which.min(values)]
-     
-     alpha.trim = 1/2 - sqrt(1/4 - 1/gamma)
-     print(paste("Trimming threshold alpha is ",alpha.trim))
-     return(plogis(lin.ps)<= 1-alpha.trim &  plogis(lin.ps)>=alpha.trim)
-   }
-  
-}
-
-```
-
-```{r}
+```r
 #Loading package
 library("Matching")
+```
 
+```
+## Loading required package: MASS
+```
+
+```
+## Warning: package 'MASS' was built under R version 3.6.2
+```
+
+```
+## ## 
+## ##  Matching (Version 4.9-7, Build Date: 2020-02-05)
+## ##  See http://sekhon.berkeley.edu/matching for additional documentation.
+## ##  Please cite software as:
+## ##   Jasjeet S. Sekhon. 2011. ``Multivariate and Propensity Score Matching
+## ##   Software with Automated Balance Optimization: The Matching package for R.''
+## ##   Journal of Statistical Software, 42(7): 1-52. 
+## ##
+```
+
+```r
 data(lalonde)
 
 #Estimating the propensity score model
@@ -237,13 +75,20 @@ lalonde$ps.linear = predict(ps.imbens, type = "link")
 
 #Trimming to improve balance
 keep.indicators = trimming.imbens(lalonde$ps.linear)
-lalonde.trimmed = lalonde[keep.indicators,]
+```
 
+```
+## [1] "Trimming threshold alpha is  0.13308191816384"
+```
+
+```r
+lalonde.trimmed = lalonde[keep.indicators,]
 ```
 
 Next, we construct a function that estimates our effects using blocking with regression. This function uses the block construction function presented in the previous session:
 
-```{r}
+
+```r
 #Robust standard errors package
 library("sandwich")
 
@@ -304,13 +149,117 @@ blocking.regression <- function(outcome, treatment, controls, data, lin.score, e
 
 Next, we apply the above function in our sample
 
-```{r}
+
+```r
 #Estimating ATE - no adjustment for covariates
 blocking.regression("re78", "treat", c(), lalonde.trimmed, lalonde.trimmed$ps.linear)
+```
 
+```
+## [1] "Sample was divided in 2 blocks"
+```
+
+```
+## $Estimand
+## [1] "ATE"
+## 
+## $Estimate
+## [1] 1617.683
+## 
+## $SE
+## [1] 656.5996
+## 
+## $`Details per block`
+## $`Details per block`[[1]]
+## $`Details per block`[[1]]$`Block no`
+## [1] 1
+## 
+## $`Details per block`[[1]]$Nobs
+## [1] 219
+## 
+## $`Details per block`[[1]]$Ntreat
+## [1] 69
+## 
+## $`Details per block`[[1]]$Est
+##    treat 
+## 548.8325 
+## 
+## $`Details per block`[[1]]$SE
+## [1] 863.9399
+## 
+## 
+## $`Details per block`[[2]]
+## $`Details per block`[[2]]$`Block no`
+## [1] 2
+## 
+## $`Details per block`[[2]]$Nobs
+## [1] 225
+## 
+## $`Details per block`[[2]]$Ntreat
+## [1] 115
+## 
+## $`Details per block`[[2]]$Est
+##    treat 
+## 2658.031 
+## 
+## $`Details per block`[[2]]$SE
+## [1] 985.7469
+```
+
+```r
 #Estimating ATT - adjusting for earnings in 75
 blocking.regression("re78", "treat", c("re75"), lalonde.trimmed, lalonde.trimmed$ps.linear, estimand = "ATT")
+```
 
+```
+## [1] "Sample was divided in 2 blocks"
+```
+
+```
+## $Estimand
+## [1] "ATT"
+## 
+## $Estimate
+## [1] 1815.821
+## 
+## $SE
+## [1] 697.5131
+## 
+## $`Details per block`
+## $`Details per block`[[1]]
+## $`Details per block`[[1]]$`Block no`
+## [1] 1
+## 
+## $`Details per block`[[1]]$Nobs
+## [1] 219
+## 
+## $`Details per block`[[1]]$Ntreat
+## [1] 69
+## 
+## $`Details per block`[[1]]$Est
+##    treat 
+## 581.1108 
+## 
+## $`Details per block`[[1]]$SE
+## [1] 864.4793
+## 
+## 
+## $`Details per block`[[2]]
+## $`Details per block`[[2]]$`Block no`
+## [1] 2
+## 
+## $`Details per block`[[2]]$Nobs
+## [1] 225
+## 
+## $`Details per block`[[2]]$Ntreat
+## [1] 115
+## 
+## $`Details per block`[[2]]$Est
+##    treat 
+## 2556.648 
+## 
+## $`Details per block`[[2]]$SE
+## [1] 988.163
 ```
 
 ## Matching on the estimated propensity score
@@ -319,15 +268,48 @@ Next, we consider matching on the estimated propensity score. The idea here is t
 
 Package Matching of Sekhon (2011) implements propensity score matching (and other forms of matching) under a variety of options. See the author's page (and his JSS paper in the references) for several examples: http://sekhon.berkeley.edu/matching/ . Below, we will implement matching on our estimated propensity score:
 
-```{r}
+
+```r
 #Estimation
 match  = Match(Y = lalonde.trimmed$re78, Tr = lalonde.trimmed$treat, X = lalonde.trimmed$ps.linear, estimand = "ATT", M=1, replace= T)
 summary(match)
 ```
+
+```
+## 
+## Estimate...  1746.8 
+## AI SE......  830.11 
+## T-stat.....  2.1043 
+## p.val......  0.035351 
+## 
+## Original number of observations..............  444 
+## Original number of treated obs...............  184 
+## Matched number of observations...............  184 
+## Matched number of observations  (unweighted).  2464
+```
 By default, the matching package reports Abadie and Imbens (2006) standard errors, which account for variability in the conditional treatment effect $\tau(x)$ (i.e. it implicitly assumes the estimand of interest is the ATE/ATT in the population from which our sample was drawn). If we want to report conditional standard errors like in the previous session (i.e. interest lies in the sample ATE/ATT), we just make:
 
-```{r}
+
+```r
 summary(match, full = T)
+```
+
+```
+## 
+## Estimate...  1746.8 
+## AI SE......  830.11 
+## T-stat.....  2.1043 
+## p.val......  0.035351 
+## 
+## Est noAdj..  1746.8 
+## SE.........  709.89 
+## T-stat.....  2.4607 
+## p.val......  0.013867 
+## 
+## Original number of observations..............  444 
+## Original number of treated obs...............  184 
+## Matched number of observations...............  184 
+## Matched number of observations  (unweighted).  2464
 ```
 Importantly, though, the Abadie and Imbens (2006) standard errors reported by the package do *not* account for variability due to estimation error in the propensity score. This is not much of a problem if interest lies in the population ATE, as Abadie and Imbens (2016) actually show that estimating the propensity score *reduces* the variance, so we may think of our variance formula as conservative. However, in the ATT case, we may be under- or overestimating the variance, so you may want to check their paper to see how to account for this error.
 
@@ -372,7 +354,8 @@ with weights  $w_i = (\hat{p}_i)^{-D_i} \cdot (1-\hat{p}_i)^{-(1-D_i)}$. This ap
 
 The regression formulation of the IPW is also useful because it yields immediate variance estimators from the regression output. Importantly, it can be shown that using robust standard errors in the formulation above already yields an estimator of the variance that accounts for variability in $\tau(x)$ (Hirano, Imbens and Ridder, 2003). As for variability due to estimation of the propensity score, we note that not accounting for the estimation of the propensity score actually leads to *conservative* inference on population ATT/ATE (Hirano, Imbens and Ridder, 2003), since estimation of the propensity score only increases efficiency.
 
-```{r}
+
+```r
 #IPW for ATE estimation
 weights = (lalonde.trimmed$treat/plogis(lalonde.trimmed$ps.linear)) + ((1-lalonde.trimmed$treat)/(1-plogis(lalonde.trimmed$ps.linear)))
 
@@ -380,11 +363,41 @@ ipw.model = lm(re78~treat, data = lalonde.trimmed, weights = weights)
 
 #Package to produce coefficient tests
 library(lmtest)
+```
 
+```
+## Loading required package: zoo
+```
 
+```
+## Warning: package 'zoo' was built under R version 3.6.2
+```
+
+```
+## 
+## Attaching package: 'zoo'
+```
+
+```
+## The following objects are masked from 'package:base':
+## 
+##     as.Date, as.Date.numeric
+```
+
+```r
 #Inference using HC standard errors
 coeftest(ipw.model, vcov. = vcovHC)
+```
 
+```
+## 
+## t test of coefficients:
+## 
+##             Estimate Std. Error t value Pr(>|t|)    
+## (Intercept)  4549.53     345.94 13.1514  < 2e-16 ***
+## treat        1551.38     656.95  2.3615  0.01863 *  
+## ---
+## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 ```
 
 Finally, we note that the inverse in IPW may actually lead to problems: indeed, small biases in the propensity score may lead to large biases in estimated effects. Imbens and Rubin argue that subclassification is prefferable because it "smooths" inverse weights by assigning the same weight to observations in the same block. Cf. Section 17.8 in the book for a discussion.

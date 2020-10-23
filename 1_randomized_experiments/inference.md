@@ -7,20 +7,7 @@ output:
     keep_md: true
 ---
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-rm(list=ls())
-setwd("~/Dropbox/USP/dout/Monitorias/Microeconometria I/Monitorias")
-dados =  read.csv("base.merge.serie0.csv")
 
-data = data.frame(cbind("escola"=as.numeric(as.factor(dados$inep_escola1)), "aluno" = 1:nrow(dados), "logico" = as.vector(scale(dados$prop_logico_perc2)),  
-                        "verbal" = as.vector(scale(dados$prop_verbal_perc2)), "abstrato" =as.vector(scale(dados$prop_asbrato_perc2)),
-                        "espacial" =as.vector(scale(dados$prop_espacial_perc2)),
-                        "mulher" = dados$mulher1, "idade" = dados$idade_anos1, "tratamento"= dados$tratamento1))
-data = data[order(data$escola),]
-
-write.csv(data, "dados_follow.csv")
-```
 
 ## "Back-of envelope" power calculations
 
@@ -58,24 +45,105 @@ Y_i = \alpha + \beta D_i + \epsilon_i \\
 
 What does this imply? It implies that the power calculation using the formula above will vary the average treatment effect, while *keeping fixed treatment heterogeneity* at what is observed in the data. 
 
-```{r}
+
+```r
 head(data)
+```
 
+```
+##     escola aluno     logico     verbal   abstrato    espacial mulher    idade
+## 89       1    89 -0.2336050  1.1886198 -0.1476038 -0.56702017      1 10.30411
+## 151      1   151 -1.1348661  0.5856582 -1.1028113 -1.61972552      0 10.64384
+## 152      1   152 -1.1348661 -1.2232269 -0.1476038 -0.56702017      1 11.06027
+## 235      1   235 -0.5340254  0.5856582  0.8076036  1.01203810      0 11.26301
+## 281      1   281  0.3672357  0.5856582 -0.1476038 -0.04066742      1 11.04658
+## 290      1   290 -0.2336050 -0.6202652  0.8076036  1.01203810      1 10.62466
+##     tratamento
+## 89           0
+## 151          0
+## 152          0
+## 235          0
+## 281          0
+## 290          0
+```
+
+```r
 summary(data)
+```
 
+```
+##      escola          aluno           logico             verbal       
+##  Min.   : 1.00   Min.   :  1.0   Min.   :-1.73571   Min.   :-2.4292  
+##  1st Qu.: 8.00   1st Qu.:227.2   1st Qu.:-0.83445   1st Qu.:-0.6203  
+##  Median :14.00   Median :453.5   Median : 0.06682   Median :-0.0173  
+##  Mean   :15.19   Mean   :453.5   Mean   : 0.00000   Mean   : 0.0000  
+##  3rd Qu.:23.00   3rd Qu.:679.8   3rd Qu.: 0.66766   3rd Qu.: 0.5857  
+##  Max.   :30.00   Max.   :906.0   Max.   : 2.47018   Max.   : 2.9975  
+##     abstrato          espacial            mulher           idade       
+##  Min.   :-2.0580   Min.   :-1.61973   Min.   :0.0000   Min.   : 8.784  
+##  1st Qu.:-0.6252   1st Qu.:-0.56702   1st Qu.:0.0000   1st Qu.:10.661  
+##  Median :-0.1476   Median :-0.04067   Median :0.0000   Median :11.060  
+##  Mean   : 0.0000   Mean   : 0.00000   Mean   :0.4735   Mean   :11.219  
+##  3rd Qu.: 0.8076   3rd Qu.: 0.48569   3rd Qu.:1.0000   3rd Qu.:11.402  
+##  Max.   : 2.2404   Max.   : 3.11745   Max.   :1.0000   Max.   :17.005  
+##    tratamento    
+##  Min.   :0.0000  
+##  1st Qu.:0.0000  
+##  Median :1.0000  
+##  Mean   :0.5342  
+##  3rd Qu.:1.0000  
+##  Max.   :1.0000
+```
 
+```r
 #Package to compute CR SE
 library(sandwich)
 
 #Package to produce test tables with robust SEs 
 library(lmtest)
+```
 
+```
+## Loading required package: zoo
+```
+
+```
+## Warning: package 'zoo' was built under R version 3.6.2
+```
+
+```
+## 
+## Attaching package: 'zoo'
+```
+
+```
+## The following objects are masked from 'package:base':
+## 
+##     as.Date, as.Date.numeric
+```
+
+```r
 #Running the regression of interest
 modelo = lm(logico~tratamento+idade+mulher, data)
 
 #Inference with CR standard errors
 coeftest(modelo, vcov. = vcovCL, cluster = data$escola)
+```
 
+```
+## 
+## t test of coefficients:
+## 
+##              Estimate Std. Error t value  Pr(>|t|)    
+## (Intercept)  2.992809   0.335465  8.9214 < 2.2e-16 ***
+## tratamento  -0.113388   0.140396 -0.8076    0.4195    
+## idade       -0.273428   0.029664 -9.2175 < 2.2e-16 ***
+## mulher       0.285773   0.049216  5.8065 8.836e-09 ***
+## ---
+## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+```
+
+```r
 #We'll use the formula to compute power
 varCL = vcovCL(modelo, cluster = data$escola)
 
@@ -93,14 +161,39 @@ for(b in grid.beta)
 table.power = cbind("Avg. Effect" = grid.beta, "Power" = power)
 
 print(table.power)
+```
 
+```
+##            Avg. Effect      Power
+## tratamento       -0.50 0.94535523
+## tratamento       -0.45 0.89348177
+## tratamento       -0.40 0.81303220
+## tratamento       -0.35 0.70298292
+## tratamento       -0.30 0.57020826
+## tratamento       -0.25 0.42894883
+## tratamento       -0.20 0.29653605
+## tratamento       -0.15 0.18754474
+## tratamento       -0.10 0.10983927
+## tratamento       -0.05 0.06465238
+## tratamento        0.00 0.05000000
+## tratamento        0.05 0.06465238
+## tratamento        0.10 0.10983927
+## tratamento        0.15 0.18754474
+## tratamento        0.20 0.29653605
+## tratamento        0.25 0.42894883
+## tratamento        0.30 0.57020826
+## tratamento        0.35 0.70298292
+## tratamento        0.40 0.81303220
+## tratamento        0.45 0.89348177
+## tratamento        0.50 0.94535523
 ```
 
 How do these results compare with the simulation analysis we performed in the previous session?
 
 What if we doubled the sample size? In this case, we know that standard errors are divided by $\sqrt{2}$, in which case we have:
 
-```{r}
+
+```r
 se = se/sqrt(2)
 
 
@@ -118,9 +211,35 @@ table.power = cbind("Avg. Effect" = grid.beta, "Power" = power)
 print(table.power)
 ```
 
+```
+##            Avg. Effect      Power
+## tratamento       -0.50 0.99895297
+## tratamento       -0.45 0.99495756
+## tratamento       -0.40 0.98073883
+## tratamento       -0.35 0.94127899
+## tratamento       -0.30 0.85587086
+## tratamento       -0.25 0.71168287
+## tratamento       -0.20 0.52182444
+## tratamento       -0.15 0.32697244
+## tratamento       -0.10 0.17188355
+## tratamento       -0.05 0.07953038
+## tratamento        0.00 0.05000000
+## tratamento        0.05 0.07953038
+## tratamento        0.10 0.17188355
+## tratamento        0.15 0.32697244
+## tratamento        0.20 0.52182444
+## tratamento        0.25 0.71168287
+## tratamento        0.30 0.85587086
+## tratamento        0.35 0.94127899
+## tratamento        0.40 0.98073883
+## tratamento        0.45 0.99495756
+## tratamento        0.50 0.99895297
+```
+
 Finally, we provide a function that computes the MDE for a given probability of rejecting the null $\kappa$. We do so by numerically inverting the formula provided above.
 
-```{r}
+
+```r
 #Function that computes MDE for bilateral test.
 #alpha: significance level
 #se: estimate of coefficient standard error
@@ -140,14 +259,18 @@ compute.mde.bilateral <- function(alpha, se, kappa, step.grid = 1e-3)
 }
 ```
 
-```{r}
 
+```r
 #We'll use the formula to compute power
 varCL = vcovCL(modelo, cluster = data$escola)
 
 se = (sqrt(diag(varCL)))["tratamento"]
 
 mde <- compute.mde.bilateral(0.05,se, 0.8)
+```
+
+```
+## [1] "MDE at 80% of a 5% test is absolute value of effect >= 0.393389216231784"
 ```
 
 
@@ -174,7 +297,8 @@ Note that there is an option between studentizing or not the bootstrapped statis
 
 Let's create a function that implements Wild BS:
 
-```{r}
+
+```r
 #Function that computes wild BS. Takes as arguments:
 #formula: amodel to test
 #coef.to.test: character. name of the variable in formula whose coefficient we will test
@@ -239,7 +363,8 @@ wild.bs <- function(formula, coef.to.test, cluster.var, data, b = 0, S = 1000)
 }
 ```
 
-```{r}
+
+```r
 #Setting seed to allow for replication
 set.seed(1234)
 
@@ -249,6 +374,14 @@ formula = logico ~ tratamento + idade + mulher
 res.wild.bs = wild.bs(formula, "tratamento", "escola",data)
 
 print(res.wild.bs)
+```
+
+```
+## $`Unstudentized p-value`
+## [1] 0.448
+## 
+## $`Studentized p-value`
+## [1] 0.452
 ```
 
 ## Randomization inference
@@ -272,8 +405,8 @@ In the discussion above, any function $\tau$ produces a test with correct level.
 
 Below, we implement randomization inference to test the null that there was no treatment effect on any individual in the sample: $\delta_j = 0$ for all $j$. We will use a studentized regression coefficient as statistic.
 
-```{r}
 
+```r
 #Running the regression of interest
 modelo = lm(logico~tratamento+idade+mulher, data)
 
@@ -317,6 +450,10 @@ p_value = 1 - mean(abs(test.data)>abs(vec_simulation))
 print(p_value)
 ```
 
+```
+## [1] 0.437
+```
+
 
 ## Multiple Hypothesis Testing in Randomization Inference
 
@@ -358,7 +495,8 @@ With this regression, we can extract the covariance matrix from the R functions.
 
 Let's test the sharp null that there was no effect in any outcome for any individaul in our dataset.
 
-```{r}
+
+```r
 #We will stack our dataset so we can recover covariances of estimators from one regression
 outcome.names = c("logico","verbal", "espacial", "abstrato")
 
@@ -373,7 +511,19 @@ for(outcome in outcome.names)
 }
 
 head(data.stacked)
+```
 
+```
+##     escola aluno    idade mulher tratamento    outcome outcome.name
+## 89       1    89 10.30411      1          0 -0.2336050       logico
+## 151      1   151 10.64384      0          0 -1.1348661       logico
+## 152      1   152 11.06027      1          0 -1.1348661       logico
+## 235      1   235 11.26301      0          0 -0.5340254       logico
+## 281      1   281 11.04658      1          0  0.3672357       logico
+## 290      1   290 10.62466      1          0 -0.2336050       logico
+```
+
+```r
 #Converts outcome.label to factor (we assign an underlying enumeration to these variables)
 data.stacked$outcome.name = as.factor(data.stacked$outcome.name)
 
@@ -384,7 +534,34 @@ modelo.full.data = lm(outcome~-1+outcome.name + outcome.name:tratamento
 #Separate hypothesis testing for avg treatment effect
 #Notice inference is the same as running separately each regression, so we are actually doing things correctly
 coeftest(modelo.full.data, vcov. = vcovCL, cluster = data.stacked$escola)
+```
 
+```
+## 
+## t test of coefficients:
+## 
+##                                  Estimate Std. Error t value  Pr(>|t|)    
+## outcome.namelogico               2.992809   0.335603  8.9177 < 2.2e-16 ***
+## outcome.nameverbal               1.714962   0.318678  5.3815 7.858e-08 ***
+## outcome.nameespacial             1.305078   0.352844  3.6987 0.0002199 ***
+## outcome.nameabstrato             1.623036   0.373957  4.3402 1.463e-05 ***
+## outcome.namelogico:tratamento   -0.113388   0.140454 -0.8073 0.4195475    
+## outcome.nameverbal:tratamento   -0.037957   0.097564 -0.3890 0.6972630    
+## outcome.nameespacial:tratamento -0.046256   0.089702 -0.5157 0.6061187    
+## outcome.nameabstrato:tratamento -0.108489   0.102395 -1.0595 0.2894394    
+## outcome.namelogico:idade        -0.273428   0.029676 -9.2137 < 2.2e-16 ***
+## outcome.nameverbal:idade        -0.148844   0.027739 -5.3659 8.560e-08 ***
+## outcome.nameespacial:idade      -0.113487   0.029192 -3.8876 0.0001031 ***
+## outcome.nameabstrato:idade      -0.140890   0.031646 -4.4521 8.761e-06 ***
+## outcome.namelogico:mulher        0.285773   0.049237  5.8041 7.031e-09 ***
+## outcome.nameverbal:mulher       -0.052430   0.069125 -0.7585 0.4482160    
+## outcome.nameespacial:mulher     -0.015152   0.065794 -0.2303 0.8178807    
+## outcome.nameabstrato:mulher      0.032835   0.071611  0.4585 0.6466067    
+## ---
+## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+```
+
+```r
 #We now extract the relevant part of the covariance matrix
 vcov.data = vcovCL(modelo.full.data,cluster = data.stacked$escola)
 
@@ -429,7 +606,10 @@ for(s in 1:1000)
 p_value = 1 - mean(wald.data > vec_simulation)
 
 print(p_value)
+```
 
+```
+## [1] 0.852
 ```
 
 

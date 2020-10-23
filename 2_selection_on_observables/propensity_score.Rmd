@@ -2,7 +2,9 @@
 title: "Estimating the propensity score"
 author: "Luis Alvarez"
 date: "9/8/2020"
-output: html_document
+output:
+  html_document:
+    keep_md: true
 ---
 
 ```{r setup, include=FALSE}
@@ -431,4 +433,10 @@ Trimming improved balance a bit. If, in your case, you think it is not enough, y
 When we are interested in ATT, an alternative to trimming is to construct a matched sample, where each treated unit is matched (without replacement) to the ``closest'' (in terms of covariates) control units. This creates a sample with $2*N_{\text{treat}}$ units, which we can then use for estimating effects. I do not discuss this approach here; cf. Chapter 15 of the book for details.
 
 ## References
+
+### Book
+
+Imbens, G., & Rubin, D. (2015). Causal Inference for Statistics, Social, and Biomedical Sciences: An Introduction. Cambridge: Cambridge University Press. doi:10.1017/CBO9781139025751
+
+### Articles
 Imbens G. Matching Methods in Practice. Journal of Human Resources, 2015;50(2):373-419. 

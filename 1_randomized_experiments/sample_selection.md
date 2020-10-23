@@ -7,9 +7,7 @@ output:
     keep_md: true
 ---
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-```
+
 
 The goal of this session is to show how Lee's approach works through a simple simulation.
 
@@ -49,10 +47,17 @@ $$
 
 Let's create a function that simulates a sample from this population, and reports both the ``full'' dataset, with variables not observed by the researcher; and the true dataset. We'll set $N$ really high, so we don't worry about estimation error. 
 
-```{r cars}
+
+```r
 #Draws from multivariate normal
 library(mvtnorm)
+```
 
+```
+## Warning: package 'mvtnorm' was built under R version 3.6.2
+```
+
+```r
 #Sets seed to allow for replication
 set.seed(1234)
 
@@ -90,15 +95,32 @@ observado = dados$observed
 plot(density(inteiro[,"Y0"]), main = "Y(0) e Y(1)", xlab= "Outcome",col = "red")
 lines(density(inteiro[,"Y1"]), main = "Y(0) e Y(1)", xlab= "Outcome", col = "blue")
 legend("topleft", legend = c("Y0","Y1"), col = c("red","blue"), lwd = 1)
+```
 
+![](sample_selection_files/figure-html/cars-1.png)<!-- -->
+
+```r
 mean(inteiro[,"Y1"]) - mean(inteiro[,"Y0"])
+```
 
+```
+## [1] 1.000227
+```
+
+```r
 plot(density(observado[observado[,"D"]==0&!is.na(observado[,"Y"]),"Y"]), main = "Tratado e Controle", xlab= "Outcome",col = "red")
 lines(density(observado[observado[,"D"]==1&!is.na(observado[,"Y"]),"Y"]), col = "Blue")
 legend("topleft", legend = c("Controle","Tratado"), col = c("red","blue"), lwd = 1)
+```
 
+![](sample_selection_files/figure-html/cars-2.png)<!-- -->
+
+```r
 mean(observado[observado[,"D"]==1&!is.na(observado[,"Y"]),"Y"]) - mean(observado[observado[,"D"]==0&!is.na(observado[,"Y"]),"Y"])
+```
 
+```
+## [1] 0.73991
 ```
 
 What is the parameter of interest in Lee?
@@ -109,13 +131,19 @@ $$
 Let's calculate this parameter using _full_, unobserved data (this parameter is only set-identified from observed data in Lee's framework!!).
 
 
-```{r}
+
+```r
 mean(inteiro[inteiro[,"S0"]==1&inteiro[,"S1"]==1,"Y1"]) - mean(inteiro[inteiro[,"S0"]==1&inteiro[,"S1"]==1,"Y0"]) 
+```
+
+```
+## [1] 0.9592552
 ```
 
 How can we estimate sharp bounds for this effect, from the data?
 
-```{r}
+
+```r
 observado = cbind(observado, "S" = !is.na(observado[,"Y"]))
 #Convert to dataframe
 observado = data.frame(observado)
@@ -127,7 +155,18 @@ LB = mean(G[G<=quantiles[2]]) -  mean(observado$Y[observado$D==0&observado$S==1]
 UB = mean(G[G>=quantiles[1]]) -  mean(observado$Y[observado$D==0&observado$S==1])
 
 print(LB)
+```
+
+```
+## [1] 0.4357457
+```
+
+```r
 print(UB)
+```
+
+```
+## [1] 1.060212
 ```
 
 ## References
