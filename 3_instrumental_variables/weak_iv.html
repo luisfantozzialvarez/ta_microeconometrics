@@ -505,7 +505,10 @@ olea_pflueger_f &lt;- function(endogenous, instruments, vcov, data, controls = c
       
       for(instrument in instruments)
       {
-        z = as.vector(residuals(lm(as.formula(paste(instrument, &quot;~ -1 + &quot;, paste(controls,collapse = &quot;+&quot;),sep=&quot;&quot;)), data.kept)))
+        
+        if(is.null(weights))
+        z =  as.vector(residuals(lm(as.formula(paste(instrument, &quot;~ -1 + &quot;, paste(controls,collapse = &quot;+&quot;),sep=&quot;&quot;)), data.kept))) else
+                 z =  as.vector(residuals(lm(as.formula(paste(instrument, &quot;~ -1 + &quot;, paste(controls,collapse = &quot;+&quot;),sep=&quot;&quot;)), data.kept, weights = weights[keep_ind])) )
         
         Z = cbind(Z, z)
       }
@@ -513,7 +516,7 @@ olea_pflueger_f &lt;- function(endogenous, instruments, vcov, data, controls = c
     } else {
       # y = as.vector(data.kept[,endogenous])
       
-      Z = as.matrix(data[,instruments])
+      Z = as.matrix(data.kept[,instruments])
       
     }
     
@@ -521,7 +524,7 @@ olea_pflueger_f &lt;- function(endogenous, instruments, vcov, data, controls = c
     
     if(is.null(weights))
       fs.reg =lm(as.formula(formula.fs), data.kept) else fs.reg =lm(as.formula(formula.fs), data.kept,
-                                                                    weights = weights[keep.ind])
+                                                                    weights = weights[keep_ind])
     
     # if(is.null(weights))
     #   fs.reg = lm(y~Z-1) else fs.reg = lm(y~Z-1, weights = weights[keep_ind])
@@ -529,19 +532,19 @@ olea_pflueger_f &lt;- function(endogenous, instruments, vcov, data, controls = c
     coefs = fs.reg$coefficients[names(fs.reg$coefficients)%in%instruments]
     
     if(!is.null(cluster))
-     vcov_mat = vcov(fs.reg,cluster = data[keep_ind, cluster], ...) else vcov_mat = vcov(fs.reg, ...)
+      vcov_mat = vcov(fs.reg,cluster = data[keep_ind, cluster], ...) else vcov_mat = vcov(fs.reg, ...)
     
     #Restricting to only instruments
     vcov_mat = vcov_mat[names(fs.reg$coefficients)%in%instruments,names(fs.reg$coefficients)%in%instruments]
     
     if(is.null(weights))
-      Q_Z_norm = t(Z)%*%Z/Nobs else Q_Z_norm = t(Z)%*%diag(weights[keep_ind])%*%Z/Nobs
+      Q_Z_norm = t(Z)%*%Z/Nobs else Q_Z_norm = t(Z)%*%(weights[keep_ind]*Z)/Nobs
     
     F_eff = t(coefs)%*%Q_Z_norm%*%coefs/sum(diag(vcov_mat%*%Q_Z_norm))
     
     
     return(list(&quot;Nobs&quot; = Nobs, &quot;Effective F&quot; = F_eff))
-
+    
 }</code></pre>
 <p>Let us apply our function to test a simple example. We will use data from 48 US states in 1985 and 1995. Our goal is to estimate the price-elasticity of cigarette demand. As a simple instrument, we will use nonexcise taxes (which excludes sales taxes), which should affect prices through demand but not supply, as an instrument. We will cluster standard errors at the state level.</p>
 <p>The dataset is available on package <strong>AER</strong>, which provides an <strong>ivreg</strong> function which computes robust F tests (when combined with package <strong>sandwich</strong>). Let us compare this robust F test – which works as a test for <strong>instrument relevance</strong> – with our test for weak instruments constructed above.</p>
@@ -674,11 +677,11 @@ anderson_rubin_test &lt;- function(outcome, endogenous, instruments, vcov, data,
     
     #Constructing the formula for regression
     if(length(controls)&gt;0)
-     formula = paste(&quot;pool_variable ~ -1 + &quot;, paste(paste(&quot;variable_indicator&quot;, instruments, sep = &quot;:&quot;),collapse = &quot;+&quot;), &quot;+&quot;, paste(paste(&quot;variable_indicator&quot;, controls, sep = &quot;:&quot;))) else  formula = paste(&quot;pool_variable ~ -1 +&quot;, paste(paste(&quot;variable_indicator&quot;, instruments, sep = &quot;:&quot;),collapse = &quot;+&quot;)) 
+     formula = paste(&quot;pool_variable ~ -1 + &quot;, paste(paste(&quot;variable_indicator&quot;, instruments, sep = &quot;:&quot;),collapse = &quot;+&quot;), &quot;+&quot;, paste(paste(&quot;variable_indicator&quot;, controls, sep = &quot;:&quot;),collapse = &quot;+&quot;)) else  formula = paste(&quot;pool_variable ~ -1 +&quot;, paste(paste(&quot;variable_indicator&quot;, instruments, sep = &quot;:&quot;),collapse = &quot;+&quot;)) 
        
        
     if(is.null(weights))
-      pool.model = lm(formula, data.pooled) else  pool.model = lm(formula, data.pooled, weights = weights[rep(keep_ind,2)]) 
+      pool.model = lm(as.formula(formula), data.pooled) else  pool.model = lm(as.formula(formula), data.pooled, weights = rep(weights[keep_ind],2)) 
     
     coefs = pool.model$coefficients
     
@@ -712,7 +715,7 @@ anderson_rubin_test &lt;- function(outcome, endogenous, instruments, vcov, data,
 ## $Nobs
 ## [1] 96</code></pre>
 <p>So we reject the null that the elasticity is zero, right?</p>
-<p>How can we construct confidence-intervals using the above testing procedure? The idea is to perform <strong>test inversion</strong> . In particular, a <span class="math inline">\(95\%\)</span> confidence interval can be constructed by finding all values <span class="math inline">\(\beta_0\)</span> for which the AR test does <em>not</em> reject the null at <span class="math inline">\(5\%\)</span>. This amounts to performing grid search over a wide range of values of <span class="math inline">\(\beta\)</span>. As argued in Andrews et. al, confidence sets based on inverting the AR test can sometimes be of the form <span class="math inline">\((-\infty, b]\)</span>, <span class="math inline">\([a,b] \cup [c,d]\)</span> etc. They may also be empty. So one should be careful when determining the grids so we get these peculiarities.</p>
+<p>How can we construct confidence-intervals using the above testing procedure? The idea is to perform <strong>test inversion</strong> . In particular, a <span class="math inline">\(95\%\)</span> confidence interval can be constructed by finding all values <span class="math inline">\(\beta_0\)</span> for which the AR test does <em>not</em> reject the null at <span class="math inline">\(5\%\)</span>. This amounts to performing grid search over a wide range of values of <span class="math inline">\(\beta\)</span>. As argued in Andrews et. al, confidence sets based on inverting the AR test can take one of three forms <strong>with a single instrument</strong>: (1) a bounded interval <span class="math inline">\([a,b]\)</span>, (2) <span class="math inline">\((-\infty, a] \cup [a, \infty)\)</span> or <span class="math inline">\((-\infty, \infty)\)</span>. In settings with more than one instrument, they can further be empty. So one should be careful when determining the grids so we get these peculiarities. In particular, you should map the cases above to “detect” in which scenario you are. This will help you determine whether grid search was successful. <em>Example:</em> if, with a single instrument, the function below returns a CI of the type <span class="math inline">\([a,b] \cup [c,d]\)</span>, where <span class="math inline">\(a\)</span> and <span class="math inline">\(d\)</span> are the upper and lower bounds of your grid, then you know that (up to approximation error of the grid) your CI is <strong>really</strong> <span class="math inline">\((-\infty, b] \cup [c, \infty)\)</span>, right?</p>
 <p>The function below computes AR confidence sets by grid search over a grid supplied by the user.</p>
 <pre class="r"><code>#AR CI
 
@@ -759,11 +762,11 @@ anderson_rubin_ci &lt;- function(outcome, endogenous, instruments, vcov, data, g
     
     #Constructing the formula for regression
     if(length(controls)&gt;0)
-     formula = paste(&quot;pool_variable ~ -1 + &quot;, paste(paste(&quot;variable_indicator&quot;, instruments, sep = &quot;:&quot;),collapse = &quot;+&quot;), &quot;+&quot;, paste(paste(&quot;variable_indicator&quot;, controls, sep = &quot;:&quot;))) else  formula = paste(&quot;pool_variable ~ -1 +&quot;, paste(paste(&quot;variable_indicator&quot;, instruments, sep = &quot;:&quot;),collapse = &quot;+&quot;)) 
+     formula = paste(&quot;pool_variable ~ -1 + &quot;, paste(paste(&quot;variable_indicator&quot;, instruments, sep = &quot;:&quot;),collapse = &quot;+&quot;), &quot;+&quot;, paste(paste(&quot;variable_indicator&quot;, controls, sep = &quot;:&quot;),collapse=&quot;+&quot;)) else  formula = paste(&quot;pool_variable ~ -1 +&quot;, paste(paste(&quot;variable_indicator&quot;, instruments, sep = &quot;:&quot;),collapse = &quot;+&quot;)) 
        
        
     if(is.null(weights))
-      pool.model = lm(formula, data.pooled) else  pool.model = lm(formula, data.pooled, weights = weights[rep(keep_ind,2)]) 
+      pool.model = lm(as.formula(formula), data.pooled) else  pool.model = lm(as.formula(formula), data.pooled, weights = rep(weights[keep_ind],2)) 
     
     coefs = pool.model$coefficients
     

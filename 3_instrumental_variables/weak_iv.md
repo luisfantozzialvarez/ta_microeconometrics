@@ -188,7 +188,10 @@ olea_pflueger_f <- function(endogenous, instruments, vcov, data, controls = c(),
       
       for(instrument in instruments)
       {
-        z = as.vector(residuals(lm(as.formula(paste(instrument, "~ -1 + ", paste(controls,collapse = "+"),sep="")), data.kept)))
+        
+        if(is.null(weights))
+        z =  as.vector(residuals(lm(as.formula(paste(instrument, "~ -1 + ", paste(controls,collapse = "+"),sep="")), data.kept))) else
+                 z =  as.vector(residuals(lm(as.formula(paste(instrument, "~ -1 + ", paste(controls,collapse = "+"),sep="")), data.kept, weights = weights[keep_ind])) )
         
         Z = cbind(Z, z)
       }
@@ -196,7 +199,7 @@ olea_pflueger_f <- function(endogenous, instruments, vcov, data, controls = c(),
     } else {
       # y = as.vector(data.kept[,endogenous])
       
-      Z = as.matrix(data[,instruments])
+      Z = as.matrix(data.kept[,instruments])
       
     }
     
@@ -204,7 +207,7 @@ olea_pflueger_f <- function(endogenous, instruments, vcov, data, controls = c(),
     
     if(is.null(weights))
       fs.reg =lm(as.formula(formula.fs), data.kept) else fs.reg =lm(as.formula(formula.fs), data.kept,
-                                                                    weights = weights[keep.ind])
+                                                                    weights = weights[keep_ind])
     
     # if(is.null(weights))
     #   fs.reg = lm(y~Z-1) else fs.reg = lm(y~Z-1, weights = weights[keep_ind])
@@ -212,19 +215,19 @@ olea_pflueger_f <- function(endogenous, instruments, vcov, data, controls = c(),
     coefs = fs.reg$coefficients[names(fs.reg$coefficients)%in%instruments]
     
     if(!is.null(cluster))
-     vcov_mat = vcov(fs.reg,cluster = data[keep_ind, cluster], ...) else vcov_mat = vcov(fs.reg, ...)
+      vcov_mat = vcov(fs.reg,cluster = data[keep_ind, cluster], ...) else vcov_mat = vcov(fs.reg, ...)
     
     #Restricting to only instruments
     vcov_mat = vcov_mat[names(fs.reg$coefficients)%in%instruments,names(fs.reg$coefficients)%in%instruments]
     
     if(is.null(weights))
-      Q_Z_norm = t(Z)%*%Z/Nobs else Q_Z_norm = t(Z)%*%diag(weights[keep_ind])%*%Z/Nobs
+      Q_Z_norm = t(Z)%*%Z/Nobs else Q_Z_norm = t(Z)%*%(weights[keep_ind]*Z)/Nobs
     
     F_eff = t(coefs)%*%Q_Z_norm%*%coefs/sum(diag(vcov_mat%*%Q_Z_norm))
     
     
     return(list("Nobs" = Nobs, "Effective F" = F_eff))
-
+    
 }
 ```
 
@@ -427,11 +430,11 @@ anderson_rubin_test <- function(outcome, endogenous, instruments, vcov, data, be
     
     #Constructing the formula for regression
     if(length(controls)>0)
-     formula = paste("pool_variable ~ -1 + ", paste(paste("variable_indicator", instruments, sep = ":"),collapse = "+"), "+", paste(paste("variable_indicator", controls, sep = ":"))) else  formula = paste("pool_variable ~ -1 +", paste(paste("variable_indicator", instruments, sep = ":"),collapse = "+")) 
+     formula = paste("pool_variable ~ -1 + ", paste(paste("variable_indicator", instruments, sep = ":"),collapse = "+"), "+", paste(paste("variable_indicator", controls, sep = ":"),collapse = "+")) else  formula = paste("pool_variable ~ -1 +", paste(paste("variable_indicator", instruments, sep = ":"),collapse = "+")) 
        
        
     if(is.null(weights))
-      pool.model = lm(formula, data.pooled) else  pool.model = lm(formula, data.pooled, weights = weights[rep(keep_ind,2)]) 
+      pool.model = lm(as.formula(formula), data.pooled) else  pool.model = lm(as.formula(formula), data.pooled, weights = rep(weights[keep_ind],2)) 
     
     coefs = pool.model$coefficients
     
@@ -477,7 +480,7 @@ anderson_rubin_test("l_packs", "l_rprice", "rtdiff", vcovCL, CigarettesSW, clust
 
 So we reject the null that the elasticity is zero, right?
 
-How can we construct confidence-intervals using the above testing procedure? The idea is to perform __test inversion__ . In particular, a $95\%$ confidence interval can be constructed by finding all values $\beta_0$ for which the AR test does _not_ reject the null at $5\%$. This amounts to performing grid search over a wide range of values of $\beta$. As argued in Andrews et. al, confidence sets based on inverting the AR test can sometimes be of the form $(-\infty, b]$, $[a,b] \cup [c,d]$ etc. They may also be empty. So one should be careful when determining the grids so we get these peculiarities.
+How can we construct confidence-intervals using the above testing procedure? The idea is to perform __test inversion__ . In particular, a $95\%$ confidence interval can be constructed by finding all values $\beta_0$ for which the AR test does _not_ reject the null at $5\%$. This amounts to performing grid search over a wide range of values of $\beta$. As argued in Andrews et. al, confidence sets based on inverting the AR test can take one of three forms __with a single instrument__: (1) a bounded interval $[a,b]$, (2) $(-\infty, a] \cup [a, \infty)$ or $(-\infty, \infty)$. In settings with more than one instrument, they can further be empty. So one should be careful when determining the grids so we get these peculiarities. In particular, you should map the cases above to "detect" in which scenario you are. This will help you determine whether grid search was successful. _Example:_ if, with a single instrument, the function below returns a CI of the type $[a,b] \cup [c,d]$, where $a$ and $d$ are the upper and lower bounds of your grid, then you know that (up to approximation error of the grid) your CI is **really** $(-\infty, b] \cup [c, \infty)$, right?
 
 The function below computes AR confidence sets by grid search over a grid supplied by the user. 
 
@@ -528,11 +531,11 @@ anderson_rubin_ci <- function(outcome, endogenous, instruments, vcov, data, grid
     
     #Constructing the formula for regression
     if(length(controls)>0)
-     formula = paste("pool_variable ~ -1 + ", paste(paste("variable_indicator", instruments, sep = ":"),collapse = "+"), "+", paste(paste("variable_indicator", controls, sep = ":"))) else  formula = paste("pool_variable ~ -1 +", paste(paste("variable_indicator", instruments, sep = ":"),collapse = "+")) 
+     formula = paste("pool_variable ~ -1 + ", paste(paste("variable_indicator", instruments, sep = ":"),collapse = "+"), "+", paste(paste("variable_indicator", controls, sep = ":"),collapse="+")) else  formula = paste("pool_variable ~ -1 +", paste(paste("variable_indicator", instruments, sep = ":"),collapse = "+")) 
        
        
     if(is.null(weights))
-      pool.model = lm(formula, data.pooled) else  pool.model = lm(formula, data.pooled, weights = weights[rep(keep_ind,2)]) 
+      pool.model = lm(as.formula(formula), data.pooled) else  pool.model = lm(as.formula(formula), data.pooled, weights = rep(weights[keep_ind],2)) 
     
     coefs = pool.model$coefficients
     
