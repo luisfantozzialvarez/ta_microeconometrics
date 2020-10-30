@@ -50,7 +50,7 @@ From the plot above, it is clear that the Nadaraya-Watson estimator is a weighte
 How does one choose a bandwidth, then? The usual approach relies on choosing $h$ so as to minimize the mean-squared error:
 
 $$
-\mathbb{E}[(\widehat{\mu(x)} - \mu(x))^2] = \text{Bias}(\widehat{\mu(x)})^2  + \mathbb{V}[\widehat{\mu(x)}]
+\mathbb{E}\left[\left(\widehat{\mu(x)} - \mu(x)\right)^2\right] = \text{Bias}\left(\widehat{\mu(x)}\right)^2  + \mathbb{V}\left[\widehat{\mu(x)}\right]
 $$
 (note that $x$ is __fixed__ here: the expectation is taken wrt to the $Z_i, X_i$, this is the error of estimating $\mu(x)$ with a random sample). The problem is that the mean-squared error is __unknown__. One approach thus relies on asymptotic expansions of the bias and variance, which allows one to estimate an approximate mean-squared error to be minimized by $h$. Yet another approach uses leave-one-out cross-validation to estimate the mean-squared error -- and chooses $h$ so as to minimize the cross-validated approximation. In the Nadaraya-Watson context with iid observations, it can be shown that _asymptotically_ both approximations lead to the same selection rule.
 
@@ -82,7 +82,7 @@ As argued in Calonico et al. (2014), under some technical conditions, it can be 
 $$\frac{\left(\hat{\tau}(h_n) - \tau\right)}{\mathbb{V}[\hat{\tau}(h_n)|\mathbf{T}]^{\frac{1}{2}}} \overset{d}{\to} N(0,1)$$
 where $\mathbf{T} =(T_1,T_2\ldots T_n)$. This approximation could in principle be used as a basis for an inferential procedure on the treatment effect -- in particular, we note that  $\mathbb{V}[\hat{\tau}(h_n)|\mathbf{T}]^{1/2}$ could be estimated from the standard error output of a weighted regression using the kernel weights.  The problem is that the leading approaches to choose $h_n$ -- which, as we discussed, work by minimizing approximations of the mean squared error -- lead to bandwidth choices (as a function of sample size) "too large" to satisfy $nh^5_n \to 0$. For example, the approach in  Imbens and Kalyanaraman (2012), which consists of minimising an asymptotic expansion of:
 
-$$\mathbb{E}[(\hat{\tau}(h) - \tau)^2] = \text{Bias}(\hat{\tau}(h)) + \mathbb{V}[\hat{\tau}(h)]$$
+$$\mathbb{E}[(\hat{\tau}(h) - \tau)^2] = \text{Bias}(\hat{\tau}(h))^2 + \mathbb{V}[\hat{\tau}(h)]$$
 leads to a choice of bandwidth $h_n = C \cdot n^{-1/5}$ where $C > 0$ is a constant, implying that $nh^5_n \nrightarrow 0$. In this case, it can be shown that the RDD estimator __is still consistent__, but that now it satisfies the asymptotic distribution:
 
 $$\frac{\left(\hat{\tau}(h_n) - B(h_n) -  \tau\right)}{\mathbb{V}[\hat{\tau}(h_n)|\mathbf{T}]^{\frac{1}{2}}} \overset{d}{\to} N(0,1)$$
@@ -283,7 +283,7 @@ plot <- rdplotdensity(rdd, rdrobust_RDsenate$margin)
 
 ![](rdd_files/figure-html/unnamed-chunk-4-1.png)<!-- -->
 
-The plot above comptues a histogram for the running variable. The lines in this case come from the __local polynomial__ density regression of Cattaneo et al. (not a global polynomial!; function defaults to local quadratic regression); and the shaded areas correspond to robust (i.e. accounting for variance due to bias estimation) bias-corrected CIs.
+The plot above computes a histogram for the running variable. The lines in this case come from the __local polynomial__ density regression of Cattaneo et al. (not a global polynomial!; function defaults to local quadratic regression); and the shaded areas correspond to robust (i.e. accounting for variance due to bias estimation) bias-corrected CIs.
 
 ## References
 
