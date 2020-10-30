@@ -378,7 +378,7 @@ where $\kappa$ is the reduced-form coefficient in $(*)$, $\pi$ is the first-stag
 \begin{equation}
 (\hat{\kappa} - \hat{\pi} \beta_0)'\widehat{\mathbb{V}(\hat{\kappa} - \hat{\pi} \beta_0)}^{-1}(\hat{\kappa} - \hat{\pi} \beta_0)
 \end{equation}
-has limiting distribution equal to a Chi-squared random variable with 1 degree of freedom, under __both Weak and Strong IV asymptotics__. The variance of $\hat{\kappa} - \hat{\pi} \beta_0$ can be found by "pooling" together  both the reduced-form and first-stage regressions to compute $\mathbb{V}\left[\begin{pmatrix}\hat{\kappa}  \\ 
+has limiting distribution equal to a Chi-squared random variable with "_number of instruments_" degrees of freedom, under __both Weak and Strong IV asymptotics__. The variance of $\hat{\kappa} - \hat{\pi} \beta_0$ can be found by "pooling" together  both the reduced-form and first-stage regressions to compute $\mathbb{V}\left[\begin{pmatrix}\hat{\kappa}  \\ 
 \hat{\pi} \end{pmatrix}\right]$, and then using the formula for the variance of linear combinations of random variables.
 
 Let us introduce a code that computes the Anderson-Rubin test statistic for the null $H_0: \beta = \beta_0$. We will allow for a single endogenous regressor only, but more than one instrument:
@@ -404,7 +404,9 @@ Let us introduce a code that computes the Anderson-Rubin test statistic for the 
 
 anderson_rubin_test <- function(outcome, endogenous, instruments, vcov, data, beta_0=0, controls = c(), intercept = T, weights = NULL, cluster = NULL, ...)
 {
-    
+  #Dof for AR test
+  dof = length(instruments)
+  
   if(length(controls)>0)
     data.kept = data[,c(outcome, endogenous,instruments, controls)] else data.kept = data[,c(outcome, endogenous,instruments)]
     
@@ -451,9 +453,9 @@ anderson_rubin_test <- function(outcome, endogenous, instruments, vcov, data, be
     
     ar = val%*%solve(vcov_lin)%*%val
     
-    pvalue =1 - pchisq(ar, 1)
+    pvalue =1 - pchisq(ar, dof)
     
-    return(list("AR test statistic" = ar, "P-value" = pvalue, "Nobs" = Nobs))
+    return(list("AR test statistic" = ar, "P-value" = pvalue, "Nobs" = Nobs, "Dof" = dof))
 }
 ```
 
@@ -476,6 +478,9 @@ anderson_rubin_test("l_packs", "l_rprice", "rtdiff", vcovCL, CigarettesSW, clust
 ## 
 ## $Nobs
 ## [1] 96
+## 
+## $Dof
+## [1] 1
 ```
 
 So we reject the null that the elasticity is zero, right?
@@ -505,7 +510,9 @@ The function below computes AR confidence sets by grid search over a grid suppli
 
 anderson_rubin_ci <- function(outcome, endogenous, instruments, vcov, data, grid_beta, confidence = 0.95, controls = c(), intercept = T, weights = NULL, cluster = NULL, ...)
 {
-    
+  #Dof for AR test
+  dof = length(instruments)
+  
   if(length(controls)>0)
     data.kept = data[,c(outcome, endogenous,instruments, controls)] else data.kept = data[,c(outcome, endogenous,instruments)]
     
@@ -558,7 +565,7 @@ anderson_rubin_ci <- function(outcome, endogenous, instruments, vcov, data, grid
         
         ar = val%*%solve(vcov_lin)%*%val
         
-        pvalue = pchisq(ar, 1)
+        pvalue = pchisq(ar, dof)
         
         if(pvalue<= confidence)
           acc_vec = c(acc_vec, T) else acc_vec = c(acc_vec, F)
@@ -650,5 +657,4 @@ Olea, J. L. M., & Pflueger, C. (2013). A robust test for weak instruments. Journ
 Staiger, D., & Stock, J. (1997). Instrumental Variables Regression with Weak Instruments. Econometrica, 65(3), 557-586. doi:10.2307/2171753
 
 Stock, J. H., & Yogo, M. (2005). Testing for Weak Instruments in Linear IV Regression. Identification and Inference for Econometric Models: Essays in Honor of Thomas Rothenberg, 80.
-
 
