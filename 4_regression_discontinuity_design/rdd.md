@@ -91,7 +91,7 @@ where $B(h_n)$ is a __bias term__. This means the distribution of the estimator 
 The usual approach in nonparametric statistics to circumvent the noncentering problem is to __bias-correct__ $\hat{\tau}(h_n)$. In words, one works out an asymptotic approximation to $B(h_n)$; and then estimates this approximation. This will involve estimation of the right- and left- second-order derivative of the conditional expectation functions $\mu$, which will be performed by local regression, and thus choosing another bandwidth -- known as a pilot bandwidth. Let $\hat{B}(h_n; b_n)$ denote the estimated bias, where $b_n$ is the pilot. It is shown in Calonico et al. that if $nh_n\to \infty$, <span style="color:red">  $nh^7_n \to 0$  and $h_n/b_n \to 0$</span>, then the bias corrected estimator satisfies:
 
 $$
-\sqrt{nh} \frac{\left(\hat{\tau}(h_n) - \hat{B}(h_n, b_n) -  \tau\right)}{\mathbb{V}[\hat{\tau}(h_n)|\mathbf{T}]^{\frac{1}{2}}} \overset{d}{\to} N(0,1)
+\frac{\left(\hat{\tau}(h_n) - \hat{B}(h_n, b_n) -  \tau\right)}{\mathbb{V}[\hat{\tau}(h_n)|\mathbf{T}]^{\frac{1}{2}}} \overset{d}{\to} N(0,1)
 $$
 
 as seen above, bias-correction ameliorates the rate concern by only requiring $nh^7 \to 0$. This requirement is satisfied by the MSE optimal rule of Imbens and Kalyanaraman (2011). Moreover, we note that, if $h_n/b_n \to 0$, then bias-correction does not affect the asymptotic variance, as seen in the formula above.  Once again, however, $b_n$ is often chosen via a MSE-optimal criterion, which will lead to bandwidth choices __not__ satisfying $h_n/b_n \to 0$. This will mean that the asymptotic distribution will be affected by the estimation error of the bias, and that inference ignoring this fact will be misleading.
