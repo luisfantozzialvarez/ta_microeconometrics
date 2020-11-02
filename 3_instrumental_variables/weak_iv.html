@@ -584,7 +584,7 @@ CigarettesSW$l_rprice = log(CigarettesSW$rprice)
 #IV regression
 iv.model =  ivreg(l_packs ~ l_rprice | rtdiff, data = CigarettesSW)
 
-summary(iv.model, diagnostics = T, vcov. = vcovCL, cluster = CigarettesSW$state)</code></pre>
+summary(iv.model, diagnostics = T, vcov. = function(z){vcovCL(z, cluster = CigarettesSW$state)})</code></pre>
 <pre><code>## 
 ## Call:
 ## ivreg(formula = l_packs ~ l_rprice | rtdiff, data = CigarettesSW)
@@ -595,20 +595,20 @@ summary(iv.model, diagnostics = T, vcov. = vcovCL, cluster = CigarettesSW$state)
 ## 
 ## Coefficients:
 ##             Estimate Std. Error t value Pr(&gt;|t|)    
-## (Intercept)   9.9552     0.7458  13.349  &lt; 2e-16 ***
-## l_rprice     -1.1322     0.1598  -7.083 2.54e-10 ***
+## (Intercept)   9.9552     0.9137   10.89  &lt; 2e-16 ***
+## l_rprice     -1.1322     0.1956   -5.79 9.27e-08 ***
 ## 
 ## Diagnostic tests:
-##                  df1 df2 statistic  p-value    
-## Weak instruments   1  94    90.421 2.03e-15 ***
-## Wu-Hausman         1  93     0.024    0.878    
-## Sargan             0  NA        NA       NA    
+##                  df1 df2 statistic p-value    
+## Weak instruments   1  94   125.828  &lt;2e-16 ***
+## Wu-Hausman         1  93     0.015   0.903    
+## Sargan             0  NA        NA      NA    
 ## ---
 ## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 ## 
 ## Residual standard error: 0.1688 on 94 degrees of freedom
 ## Multiple R-Squared: 0.5251,  Adjusted R-squared:  0.52 
-## Wald test: 50.17 on 1 and 94 DF,  p-value: 2.541e-10</code></pre>
+## Wald test: 33.52 on 1 and 94 DF,  p-value: 9.27e-08</code></pre>
 <pre class="r"><code>#Olea-Pflueger
 olea_pflueger_f(&quot;l_rprice&quot;, &quot;rtdiff&quot;, vcovCL, data = CigarettesSW, cluster = &quot;state&quot;)</code></pre>
 <pre><code>## $Nobs

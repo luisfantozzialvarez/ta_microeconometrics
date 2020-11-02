@@ -264,7 +264,7 @@ CigarettesSW$l_rprice = log(CigarettesSW$rprice)
 #IV regression
 iv.model =  ivreg(l_packs ~ l_rprice | rtdiff, data = CigarettesSW)
 
-summary(iv.model, diagnostics = T, vcov. = vcovCL, cluster = CigarettesSW$state)
+summary(iv.model, diagnostics = T, vcov. = function(z){vcovCL(z, cluster = CigarettesSW$state)})
 
 #Olea-Pflueger
 olea_pflueger_f("l_rprice", "rtdiff", vcovCL, data = CigarettesSW, cluster = "state")
