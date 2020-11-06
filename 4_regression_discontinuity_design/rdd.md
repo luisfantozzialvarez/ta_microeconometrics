@@ -134,7 +134,7 @@ rdplot(y = rdrobust_RDsenate$vote, x = rdrobust_RDsenate$margin )
 
 ![](rdd_files/figure-html/unnamed-chunk-2-1.png)<!-- -->
 
-The RD plot above shows the average of the $Y$-axis variable by "bins" of the $X$-axis variable. The number and position of the bins is computed so as to minimise the integrated mean squared error (IMSE) of predicting the conditional expectation along the right- and left- sides of the support. A fourth-order (global) polynomial (the order can be changed by argument p) is also fit separately to the left and to the right of the cutoff. Be careful when interpreting these global polymonials (Imbens and Gelman, 2019)!!!
+The RD plot above shows the average of the $Y$-axis variable by "bins" of the $X$-axis variable. The number and position of the bins is computed so as to minimise the distance between the conditional variance of the outcome, integrated along the left- and right-supports, and the (integrated) conditional variance of the estimated bins. The idea is that the bins should mimick the variance of the underlying data.  An alternative would be to choose the bins so as to minimise the integrated mean squared error (IMSE) of predicting the conditional expectation along the right- and left- sides of the support (this is implemented by option _binselect_ = "es" in the function). A fourth-order (global) polynomial (the order can be changed by argument p) is also fit separately to the left and to the right of the cutoff. Be careful when interpreting these global polymonials (Imbens and Gelman, 2019)!!!
 
 Next, we estimate the effect of interest:
 

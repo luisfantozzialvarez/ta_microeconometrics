@@ -1,0 +1,285 @@
+---
+title: "Bounds on treatment effects"
+author: "Luis Alvarez"
+date: "11/6/2020"
+output: 
+  html_document:
+    keep_md: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+rm(list=ls())
+```
+
+The code below computes the upper bound to the average treatment effect (ATE) using the Monotone Treatment Response (MTR) and Monotone Treatment Selection (MTS) assumptions of Manski and Pepper (2000). The support of the treatment variable and the outcome vector should be passed ordered __in the direction the assumption holds__; so in some cases you may want to pass $-\text{outcome}$ to the function. The function returns the upper bound to the ATE of changing treatment status from entry $j$ to entry $j+1$ in the support, for treatment values $j=1,2\ldots \text{Number of points in the support - 1}$. Bounds are computed as in Equation 23 of Manski and Pepper (2000).
+
+```{r}
+#Package to use parallel computing inside the estimate_effect function: 
+#the way I did will work in Unix (it won't parallelize in Windows)
+library(parallel)
+
+#Function to compute the Bounds under MTR and MTS of Manski and Pepper (2000). Takes as arguments:
+# Treatment vec: a N x 1 vector with the treatment assigned to each unit in the sample:
+# Values vec: a N x 1 vector with the outcome for each unit in the sample:
+# Support treatment: the support of the treatment. Should be ordered in the direction the assumptions hold.
+# Weight: weights for computing expectations. If NULL, all observations have equal weight.
+# Obs: these functions do NOT accept missing. Discard missing before using
+# Obs 2: function will return the upper bounds for an increase from support_treatment[j] to support_treatment[j+1],
+# for j = 1,2 \ldots length(support_treatment)
+estimate_effect <- function(treatment_vec, values_vec , support_treatment, weights = NULL)
+{
+  if(is.null(weights))
+    weights = rep(1, length(treatment_vec))
+  
+  indices_treatment_vec = match(treatment_vec, support_treatment)
+  
+  results =mclapply(1:(length(support_treatment)-1), function(j){
+    s = support_treatment[j]
+    t = support_treatment[j+1]
+    
+    #Computing terms for the bound
+    terms = sapply(1:(length(support_treatment)), function(j_prime){
+      s_prime = j_prime
+      
+      keep_calc = indices_treatment_vec==j_prime
+      
+      cond_exp = sum(values_vec[keep_calc]*weights[keep_calc])/sum(weights[keep_calc])
+      
+      if((j_prime > j+1)|(j_prime<j))
+      {
+        prop = sum(weights[keep_calc])/sum(weights)
+        
+        value = (prop*cond_exp)*(1*(j_prime > j+1) -1*(j_prime < j))
+      } else if(j_prime == j)
+      {
+        
+        prop = sum(weights[indices_treatment_vec>=j_prime])/sum(weights)
+        value = -prop*cond_exp
+        
+      } else if(j_prime == j+1)
+      {
+        prop = sum(weights[indices_treatment_vec<=j_prime])/sum(weights)
+        value = prop*cond_exp
+      }
+      
+      return(value)
+    })
+    #print(j)
+    #print(terms)
+    
+    #Upper bound is sum of terms
+    upper_bound =  sum(terms,na.rm = T)
+    return(upper_bound)
+    
+  })
+  results = do.call(c, results)
+  return(results)
+}
+```
+
+Let's create an example with fake data. We will suppose we have data on earnings and years of education on 10,000 individuals. We will assume these come from a random sample of 200 firms, where all firms were equally likely to be sampled from the population (so their sampling weights are equal to 1).
+
+```{r}
+#Fake data: Effect of years of schooling on wages
+set.seed(1234)
+
+years_of_schooling = 1:20
+
+#Sample size
+N = 10000
+
+#Creating data on years of schooling
+data = data.frame("schooling" = sample(years_of_schooling, N, replace =T))
+#Each person has weight 1
+data$weight = 1
+
+#Let's pretend data was sampled from Nfirms firms.
+Nfirms = 200
+
+firm_dataset = data.frame("firm_id" = 1:Nfirms)
+firm_index = sample(firm_dataset$firm_id, N, replace = T)
+
+data$firm_id = firm_index 
+data$firm_weight = 1
+
+#Now let's create the outcome. We will include a firm effect additively in the outcome
+
+#Firm shock
+firm_dataset$firm_shock = rchisq(Nfirms,1)
+
+#Chi-squared firm shock
+data_with_shock = merge(data,firm_dataset, by="firm_id", all.x = T, all.y = F)
+
+data_with_shock$wage = sin(data_with_shock$schooling*0.5*pi/(max(years_of_schooling)))*exp(rnorm(N)) +
+  data_with_shock$firm_shock
+
+data = data_with_shock
+data = data[,!colnames(data)%in%"firm_shock"]
+
+#Let's introduce some missing data in the outcome (at random) just to showcase how the function works
+data$wage[sample(N, 10, replace = F)] = NA
+
+#Point estimate
+point.est =  estimate_effect(data$schooling[!is.na(data$wage)],
+                             data$wage[!is.na(data$wage)],
+                             years_of_schooling,  weights = data$weight[!is.na(data$wage)] )
+
+print(point.est)
+
+```
+
+So the function returns the upper bounds of 19 ATES. 
+
+Next, let's compute confidence intervals using the bootstrap. We will bootstrap firms according to their weights to capture the (assumed) sampling process.
+
+
+```{r}
+
+#Creating dataset with firms to use in bootstrap
+base_ind = aggregate(cbind("weight" = data$firm_weight), list("firm_id" = data$firm_id), FUN = mean)
+
+values.bs = c()
+for(ss in 1:100)
+{
+  print(ss)
+  
+  #Drawing firms
+  sample.draw = sample(base_ind$firm_id, replace = T, prob = base_ind$weight)
+  
+  #Creating artificial dataset
+  data.artificial = merge(cbind("firm_id" = sample.draw), data, by = "firm_id", all.x = T, all.y = F)
+  
+  #Computing estimate in bs sample
+  point.est.bs =  estimate_effect(data.artificial$schooling[!is.na(data.artificial$wage)],
+                                  data.artificial$wage[!is.na(data.artificial$wage)],
+                                  years_of_schooling,  weights = data.artificial$weight[!is.na(data.artificial$wage)] )
+  
+  values.bs =rbind(values.bs, point.est.bs)
+}
+
+#Efron's Percentile method
+lower.ci = apply(values.bs, 2, quantile, probs = 0.025)
+upper.ci = apply(values.bs, 2, quantile, probs = 0.975)
+
+#Using the fact that asymptotic distribution of estimator is normal
+sd.bs = apply(values.bs, 2, sd)
+lower.ci.normal =  point.est + qnorm(0.025)*sd.bs
+upper.ci.normal =  point.est + qnorm(0.975)*sd.bs
+
+#Percentile method - with recentering
+lower.ci.recentering = 2*point.est - apply(values.bs, 2, quantile, probs = 0.975)
+upper.ci.recentering = 2*point.est - apply(values.bs, 2, quantile, probs = 0.025)
+
+print("No recentering")
+print(lower.ci)
+print(upper.ci)
+
+print("Using that Asymptotic Distribution is Gaussian (in this case it is!!)")
+print(lower.ci.normal)
+print(upper.ci.normal)
+
+print("Recentered")
+print(lower.ci.recentering)
+print(upper.ci.recentering)
+```
+
+All methods yielded similar CIs.
+
+## Testable assumptions of MTR and MTS
+
+As argued in Manski and Pepper (2000), a testable assumption of the __joint__ MTR+MTS hypotheses is that the conditional expectation of the outcome is weakly increasing in treatment status (already ordered so the assumption holds). We could test this in two ways. The first one would be to conduct sequential testing of $H_0: \beta_j = \beta_{j+1}$ against the alternative that $\beta_j > \beta_{j+1}$; where $\beta_j$ is the conditional expectation of the outcome given that treatment status equals the $j$-th point in the support. Let's implement this. We test the null for several points in the support.
+
+```{r}
+library(lmtest)
+library(sandwich)
+library(car)
+esp_condicional = lm(wage~-1+as.factor(schooling),data, weights = data$weight)
+coeftest(esp_condicional, vcov. = vcovCL, cluster = data$firm_id)
+variancia = vcovCL(esp_condicional, cluster = data$firm_id)
+
+for(ano in years_of_schooling[1:(length(years_of_schooling)-1)])
+{
+  print(paste("Testing equality between conditional expectations of", ano, "and", ano+1, "years of education against alternative that", ano, "year is greater."))
+  
+  lin_vec = -1*(names(esp_condicional$coefficients)%in%paste("as.factor(schooling)",ano,sep=""))  +1*(names(esp_condicional$coefficients)%in%paste("as.factor(schooling)",ano+1,sep=""))
+  tstat = lin_vec%*%esp_condicional$coefficients/sqrt(t(lin_vec)%*%variancia%*%lin_vec)
+  print(paste("P-value is", pnorm(tstat)))
+}
+
+
+
+```
+
+The problem with the above approach is that it is subject to the size distortions induced by multiple hypothesis testing that we have seen in the first course. An alternative, suggested by Manski and Pepper, is to consider __uniform__ confidence intervals. Let $\beta_{j}: j = 1,\ldots J$ denote the conditional expectation in the $J$ support points. Our goal is to construct a random set in $\mathbb{R}^J$, $\hat{C}$, such that:
+
+$$\mathbb{P}[(\beta_j)_{j} \in \hat{C}] \geq 1-\alpha$$
+where $1 - \alpha$ is the confidence level. If such a confidence set contains monotonic maps $j \mapsto f(j)$, then the data does not provide enough evidence to reject monotonicity  at the $\alpha$ significance level.
+
+How can we construct such a set? Suppose that we have an estimator $\hat{\beta} := (\hat{\beta}_j)_j$. Let $\boldsymbol{\beta} : = (\beta_j)_j$ denote the true parameter. Suppose the estimator satisfies (at least approximately):
+
+$$\hat{\beta}  \sim N(\boldsymbol{\beta}, \mathbb{V}(\hat{\beta})) $$
+where $\mathbb{V}(\hat{\beta})$ is positive definite. In this case, one has:
+
+$$\mathbb{V}[\hat{\beta}]^{-1/2}(\hat{\beta} -\boldsymbol{\beta}) \sim N(\mathbf{0}_{J\times 1}, \mathbb{I}_{J\times J}) $$
+
+
+and  a $1-\alpha$ uniform confidence interval can be contructed by the hyperrectangle:
+
+
+$$[\hat{\beta} - s_{1  - \alpha}d, \hat{\beta}  +s_{1-\alpha} d] := \prod_{j=1}^J[\hat{\beta}_j - s_{1  - \alpha}\cdot \operatorname{sd}(\hat{\beta}_j), \hat{\beta}_j  +s_{1-\alpha} \cdot \operatorname{sd}(\hat{\beta}_j)]  $$
+
+where $d$ is a vector with $\operatorname{sd}(\hat{\beta}_j)$ in entry $j$. Here, $s_{c}$ is the $c$-quantile of the random variable:
+
+$$S: = \max_{j=1,2\ldots J}|Z_j|$$
+with 
+$$\begin{pmatrix}
+Z_1 \\
+Z_2 \\
+\ldots \\
+Z_J 
+\end{pmatrix} \sim  N(\mathbf{0}, D\mathbb{V}(\hat{\beta})D)$$
+
+where $D$ is a diagonal matrix with $1/\operatorname{sd}(\hat{\beta}_j), j=1,\ldots J$ in the main diagonal. When there is no dependence between the estimators, the variance simplifies to an identity matrix, so we have a multivariate standard normal vector. 
+
+To see how this approach leads to valid confidence sets, we note that:
+
+$$
+\mathbb{P}[\boldsymbol{\beta} \in[\hat{\beta} - s_{1  - \alpha}d, \hat{\beta}  +s_{1-\alpha}d]] = \mathbb{P}\left[\cap_{j=1}^J \frac{|\hat{\beta}_j - \beta|}{\operatorname{sd}(\hat{\beta}_j)} \leq s_{1-\alpha}\right] = \\ =\mathbb{P}[\cap_{j=1}^J Z_J \leq s_{1-\alpha}] = 1 - \alpha
+$$
+The critical values $s_c$ are obtained via simulation. Here, the rescaling by $\operatorname{sd}(\hat{\beta}_j)$ used in the construction does not affect the confidence of the set, and is solely included to try to minimise the volume of the confidence set (i.e. we could dispense the rescaling in the confidence set formula by replacing $d$ with a vector of ones; in this case, we also replace the matrix $D$ in the definition of the $Z_j$ with an identity matrix).
+
+Let's implement the approach above in our context.
+
+```{r}
+#Drawing from multivariate normal
+library(mvtnorm)
+
+#Computing d vector and D matrix
+d = sqrt(diag(variancia))
+D = diag(1/d)
+
+confidence =  0.95
+#Computing critical values via simulation
+#1000 replications
+sims = rmvnorm(1000, mean = rep(0,nrow(variancia)), D%*%variancia%*%D)
+distr_stat =apply(sims, 1, function(x){max(abs(x))})
+
+critical_value = quantile(distr_stat, confidence)
+
+lower.ci.uniform = esp_condicional$coefficients - critical_value*d
+upper.ci.uniform = esp_condicional$coefficients + critical_value*d
+
+#Plotting
+plot(years_of_schooling, esp_condicional$coefficients ,  ylim = c(min(lower.ci.uniform),max(upper.ci.uniform)), xlab = "Years of education", ylab = "Earnings", main = "Conditional expectation of earnings and uniform CIs",type = "l")
+
+lines(years_of_schooling, lower.ci.uniform, lty = 2)
+lines(years_of_schooling, upper.ci.uniform, lty = 2)
+
+
+```
+
+So by the figure above, we don't reject monotonicity, right?
+
+## References
+Manski, C. F., & Pepper, J. V. (2000). Monotone Instrumental Variables: With an Application to the Returns to Schooling. Econometrica, 68, 997-1010.
