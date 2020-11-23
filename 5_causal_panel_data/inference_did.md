@@ -16,11 +16,11 @@ t = 1,\ldots T$$
 
 where $\mathbf{D} := [(D_{11}.\ldots D_{1T})', \ldots, (D_{G1},\ldots D_{GT})']'$. We also define $\mathcal{G}_0:=\{1,\ldots,G\}  \setminus  \mathcal{G}_1$; $G_1:=|\mathcal{G}_1|$ and $G_0 := |\mathcal{G}_0|$ . You have seen in class that, under an asymptotic sequence such that $G_0, G_1 \to \infty$ and the proper technical conditions, the two-way fixed effects (TWFE) estimator of $\beta$ in this context -- which collapses to a pre-post-period-average DID estimator -- is consistent and asymptotically normal. In this context, cluster-robust standard errors provide inference that is robust to (possible) serial correlation within each group.
 
-What happens when $G_1$ is small? In this context, Ferman and Pinto (2019) argue that the cluster-robust variance estimator (CRVE) will tend to underestimate the variance. Similarly, the wild bootstrap we have seen in the first course -- which under some conditions works with both $G_1$ and $G_0$ small __and $T$ large__ -- will tend not to work either, because the symmetry conditions required by it will hardly be satisfied in a setting where there is no variation in covariates ($D_{gt}$) within each cluster (see Example 2.3. and the Appendix in Canay et al. (2018)). One method that __does work__ with small $G_1$ and _large_ $\mathcal{G}_0$ is the method of Conley and Taber (2011). They show that, under between-group weak dependence and moment assumptions, the TWFE estimator of the model above converges in probability, as $G_1 \to \infty$:
+What happens when $G_1$ is small? In this context, Ferman and Pinto (2019) argue that the cluster-robust variance estimator (CRVE) will tend to underestimate the variance. Similarly, the wild bootstrap we have seen in the first course -- which under some conditions works with both $G_1$ and $G_0$ small __and $T$ large__ -- will tend not to work either, because the symmetry conditions required by it will hardly be satisfied in a setting where there are not,  __simultaneously__ within each cluster, observations from $\mathcal{G}_1$  and $\mathcal{G}_0$ (see Example 2.3. and the Appendix in Canay et al. (2018); in principle, they argue this could be circumvented by clustering at a higher level). One method that __does work__ with small $G_1$ and _large_ $G_0$ is the method of Conley and Taber (2011). They show that, under between-group weak dependence and moment assumptions, the TWFE estimator of the model above converges in probability, as $G_0 \to \infty$:
 
 $$\hat{\beta} \overset{p}{\to} \beta  + W \\
 W := \frac{\sum_{g \in \mathcal{G}_1} \sum_{t=1}^T (D_{gt} - \bar{D}_g) (\epsilon_{gt} - \bar{\epsilon}_g) }{\sum_{g \in \mathcal{G}_1} \sum_{t=1}^T(D_{gt} - \bar{D}_g)^2}$$
-i.e., the estimator is not consistent, as it converges to a random variable. Conley and Taber (2011) show, nonetheless, that the asymptotic representation above enables valid inference. The idea is to approximate the distribution of $W$ by using the __residuals in the treatment group__ (why don't we exploit variation in residuals from the treatment group?). For that, they require the assumption:
+i.e., the estimator is not consistent, as it converges to a random variable. Conley and Taber (2011) show, nonetheless, that the asymptotic representation above enables valid inference. The idea is to approximate the distribution of $W$ by using the __residuals in the control group__ (why don't we exploit variation in residuals from the treatment group?). For that, they require the assumption:
 
 __CT.Assumption 2__ $(\epsilon_{g1},\ldots \epsilon_{gT})$ is iid across $g$, and __independent__ of $(D_{g1}, D_{g2}\ldots D_{gT})$, with a bounded density.
 
@@ -28,8 +28,11 @@ Under the assumption above, it can be shown that the distribution of the residua
 
 1. Run the TWFE regression. Store the point estimate $\hat{\beta}$ and the residuals $\hat{\epsilon}_{jt}$.
 2. For replications $b=1,\ldots B$:
+
     2.1. Sample (with replacement) $G_1$ units __from the control group__ $\mathcal{G}_0$. Let $\{i_{g,b}: g \in \mathcal{G}_1\}$ denote the sampled indices, which we "pair" to a treated unit.
+    
     2.2. Construct and store the statistic $\hat{W}^b := \frac{\sum_{g \in \mathcal{G}_1} \sum_{t=1}^T (D_{gt} - \bar{D}_g) {\color{red}{\hat{\epsilon}}_{{i_{g,b}},t} }}{\sum_{g \in \mathcal{G}_1} \sum_{t=1}^T(D_{gt} - \bar{D}_g)^2}$.
+    
 3. If $\hat{\beta}-\beta_0 \in (-\infty, c_{\alpha/2}) \cup (c_{1-\alpha/2},\infty)$, where $c_q$ is the $q$-quantile of the empirical distribution of the $\hat{W}^b$, then one rejects the null.
 
 We note that step 3 can be replaced by looking at the distribution of $|\hat{\beta}-\beta_0|$. Moreover, one may want to impose the null when estimating residuals, though in this case a permutation-style test can be constructed by also looking at the residuals in the treatment group (cf. Conley and Taber for details (2011); in their simulations, this approach performs better in terms of size when there are fewer groups, though at the cost of slight power losses). Finally, confidence intervals can be constructed by inverting the test procedure above.
@@ -46,7 +49,7 @@ library(fixest)
 set.seed(1234)
 
 #Function that implements CT approach to a group-level model:
-# y_{gt} = \alpha_i + \gamma_t + \beta'D_{gt} + \alpha'X_{gt} \epsilon_{it} 
+# y_{gt} = \alpha_g + \gamma_t + \beta'D_{gt} + \omega'X_{gt} \epsilon_{it} 
 # Arguments are
 # outcome = character vector for the variable
 # treatment = character vector for the treatment variable
@@ -252,16 +255,16 @@ print(sapply(unique(merit_state$state), function(x){(merit_state$merit[merit_sta
 ```r
 #TWFE regression
 model = feols(coll~merit|as.factor(year)+as.factor(state),merit_state )
-summary(model, se = "cluster", cluster = "year")
+summary(model, se = "cluster", cluster = "state")
 ```
 
 ```
 ## OLS estimation, Dep. Var.: coll
 ## Observations: 612 
 ## Fixed-effects: as.factor(year): 12,  as.factor(state): 51
-## Standard-errors: Clustered (year) 
+## Standard-errors: Clustered (state) 
 ##       Estimate Std. Error t value Pr(>|t|)    
-## merit 0.054337   0.013505  4.0236 0.002004 ** 
+## merit 0.054337   0.010698  5.0792 5.65e-06 ***
 ## ---
 ## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 ## Log-likelihood: 703.34   Adj. R2: 0.32192 
@@ -291,33 +294,36 @@ conley_taber_test("coll", "merit", "year", "state", merit_state)
 Notice that Assumption 2 of Conley and Taber __prohibits__ heteroskedasticity. Ferman and Pinto (2019) argue this may be restrictive, especially if the group-level model comes from aggregating (taking means of) individual-level observations. For example, in our example above, our state-level panel comes from aggregating individual-level observations. Suppose the individual-level model is:
 
 $$Y_{igt} = \alpha_g + \gamma_t + \beta D_{gt} + v_{gt} +  \xi_{igt} $$
-then, once we aggregate the model, $\epsilon_{jt} = v_{gt}+ \frac{1}{N_{gt}} \sum_{i=1}^{N_{gt}} \xi_{igt}$. Ferman and Pinto show that, if, conditional on $\mathbf{D}$, one assumes $\xi$ is iid across $i$, $g$ and $t$; $v_{gt}$ is iid across $g$ (though arbitrarily dependent across $t$), and $N_{gt}$ is constant in $t$, then:
+then, once we aggregate the model, $\epsilon_{gt} = v_{gt}+ \frac{1}{N_{gt}} \sum_{i=1}^{N_{gt}} \xi_{igt}$. Ferman and Pinto show that, if, conditional on $\mathbf{D}$, one assumes $\xi_{igt}$ is iid across $i$, $g$ and $t$; $v_{gt}$ is iid across $g$ (though arbitrarily dependent across $t$), and $N_{gt}$ is constant in $t$, then:
 
-$$\mathbb{V}\left[\frac{1}{T-t^*}\sum_{t=t^*}^T \epsilon_{gt} - \frac{1}{t^*} \sum_{t=1}^{t^*} \epsilon_{gt} |\mathbf{D}\right] = A + \frac{B}{N_{g}}, \quad \forall g \in 1, \ldots G \quad (*)$$
+$$\mathbb{V}\left[\frac{1}{T-t^*}\sum_{t=t^*}^T \epsilon_{gt} - \frac{1}{t^*-1} \sum_{t=1}^{t^*-1} \epsilon_{gt} |\mathbf{D}\right] = A + \frac{B}{N_{g}}, \quad \forall g \in 1, \ldots G \quad (*)$$
 
-(notice that $\sum_{g \in \mathcal{G}_1} \frac{1}{T-t^*}\sum_{t=t^*}^T \epsilon_{gt} - \frac{1}{t^*} \sum_{t=1}^{t^*} \epsilon_{gt}, g \in \mathcal{G}_1$, is precisely the summand in the $W$ formula previously outlined). Therefore, variation in group sizes induces heteroskedasticity in the group-level model. If the number of observations in treated and control groups is very different, then the approach of Conley and Taber may lead to size distortions. Ferman and Pinto provide simulation evidence showing this indeed is a problem.
+(notice that $\sum_{g \in \mathcal{G}_1} \frac{1}{T-t^*}\sum_{t=t^*}^T \epsilon_{gt} - \frac{1}{t^*} \sum_{t=1}^{t^*} \epsilon_{gt}, g \in \mathcal{G}_1$, is precisely the summand in the $W$ formula previously outlined). Therefore, variation in group sizes induces heteroskedasticity in the group-level model. If the number of observations in treated and control groups is very different, then the approach of Conley and Taber may lead to size distortions. Ferman and Pinto provide simulation evidence showing this is indeed a problem.
 
 The authors thus propose a corrected bootstrap procedure to account for this problem. They suggest estimating the conditional heteroskedasticity model and then rescaling bootstrapped residuals by the conditional variance of the "paired" observation. The main required assumption is that the _same_ model for the conditional variance holds in both groups. Their bootstrap procedure starts from the observation that, in our setting, the TWFE estimator (which collapses to DID):
 
-$$ \hat{\beta} - \beta = \frac{1}{G_1}\left[ \sum_{g \in \mathcal{G}_1} \frac{1}{T-t^*}\sum_{t=t^*}^T \epsilon_{gt} - \frac{1}{t^*} \sum_{t=1}^{t^*} \epsilon_{gt}\right] - \frac{1}{G_0}\left[ \sum_{g \in \mathcal{G}_0} \frac{1}{T-t^*}\sum_{t=t^*}^T \epsilon_{gt} - \frac{1}{t^*} \sum_{t=1}^{t^*} \epsilon_{gt}\right] = \frac{1}{G_1} \sum_{g\in \mathcal{G}_1} W_g - \frac{1}{G_0} \sum_{g\in \mathcal{G}_0} W_g  $$
-They then propose the following bootstrap procedure, which uses residuals estimated under the null (so we sample from both groups):
+$$ \hat{\beta} - \beta = \frac{1}{G_1}\left[ \sum_{g \in \mathcal{G}_1} \frac{1}{T-t^*}\sum_{t=t^*}^T \epsilon_{gt} - \frac{1}{t^*-1} \sum_{t=1}^{t^*-1} \epsilon_{gt}\right] - \frac{1}{G_0}\left[ \sum_{g \in \mathcal{G}_0} \frac{1}{T-t^*}\sum_{t=t^*}^T \epsilon_{gt} - \frac{1}{t^*-1} \sum_{t=1}^{t^*-1} \epsilon_{gt}\right] =: \frac{1}{G_1} \sum_{g\in \mathcal{G}_1} W_g - \frac{1}{G_0} \sum_{g\in \mathcal{G}_0} W_g  $$
+They then propose the following bootstrap procedure, which uses residuals estimated under the null $\beta = \beta_0$ (so we sample from both groups):
 
 1. Calculate $\hat{\beta}$ via TWFE.
-2. Estimate the model __with the NULL imposed__. Store $\tilde{W}_g = \frac{1}{T-t^*}\sum_{t=t^*}^T \hat{\epsilon}_{gt} - \frac{1}{t^*} \sum_{t=1}^{t^*} \hat{\epsilon}_{gt}$ .
-3. Estimate the conditional variance model using the $\tilde{W}_g$ (e.g. the variation-in-group-sizes model may be estimated using OLS). Let $\hat{V}[W_g|\mathbf{D}]$ denote the estimated variance from such a model.
+2. Estimate the model __with the NULL imposed__. Store $\tilde{W}_g = \frac{1}{T-t^*}\sum_{t=t^*}^T \tilde{\epsilon}_{gt} - \frac{1}{t^*-1} \sum_{t=1}^{t^*-1} \tilde{\epsilon}_{gt}$ .
+3. Estimate the conditional variance model using the $\tilde{W}_g$ (e.g. the variation-in-group-sizes model (*) may be estimated using OLS of $\tilde{W}_g^2$ on an intercept and $1/N_g$). Let $\hat{V}[W_g|\mathbf{D}]$ denote the estimated variance from such a model.
 4. For replications $b = 1,2\ldots B$:
-  4.1. Samples $G_0+G_1$ units with replacement. Let $i_{g,b}, g \in \mathcal{G}_0 \cup \mathcal{G}_1$ denote the sampled indices, which we "pair" to a unit in the original sample.
-  4.2. Compute $\hat{\beta}^b = \frac{1}{G_1}\sum_{g\in \mathcal{G}_1} \tilde{W}_g \sqrt{\frac{\hat{V}[W_{i_{g,b}}|\mathbf{D}]}{\hat{V}[W_g|\mathbf{D}]}} - \frac{1}{G_0}\sum_{g\in \mathcal{G}_1} \tilde{W}_g  \sqrt{\frac{\hat{V}[W_{i_{g,b}}|\mathbf{D}]}{\hat{V}[W_g|\mathbf{D}]}}$ 
+
+    4.1. Sample $G_0+G_1$ units with replacement. Let $i_{g,b}, g \in \mathcal{G}_0 \cup \mathcal{G}_1$ denote the sampled indices, which we "pair" to a unit in the original sample.
+  
+    4.2. Compute and store $\hat{\beta}^b = \frac{1}{G_1}\sum_{g\in \mathcal{G}_1} \tilde{W}_{i_{g,b}} \sqrt{\frac{\hat{V}[W_{i_{g,b}}|\mathbf{D}]}{\hat{V}[W_g|\mathbf{D}]}} - \frac{1}{G_0}\sum_{g\in \mathcal{G}_1}  \tilde{W}_{i_{g,b}} \sqrt{\frac{\hat{V}[W_{i_{g,b}}|\mathbf{D}]}{\hat{V}[W_g|\mathbf{D}]}}$. 
+  
 5. Reject the null if $\hat{\beta}$ is at the tails of the distribution $\hat{\beta}^b$.
 
-The authors propose an extension to the above approach which allows for variation in treatment timing by showing that in this case the estimator asymptotically corresponds to a weighted average of DID estimators -- each one with a different treatment timing --, and then, for each simulation draw, computing resampled estimates for each timing and aggregating these. If there are $K$ different treatment starting periods, they estimate $K$ conditional variance models. They also use a consistency result in Conley and Taber (2011) to show that the inclusion of covariates in the outcome model is really simple: one just includes those in the regressions (steps 1 and 2), and does not have to adapt the $\hat{\beta}^b$ formula.
+The authors propose an extension to the above approach which allows for variation in treatment timing by showing that in this case the estimator asymptotically corresponds to a weighted average of DID estimators -- each one with a different treatment timing --, and then, for each simulation draw, computing resampled estimates for each timing and aggregating these. If there are $K$ different treatment starting periods, they estimate $K$ conditional variance models. They also use a consistency result in Conley and Taber (2011) to show that the inclusion of covariates in the outcome model is straightforward: one just includes those in the regressions (steps 1 and 2), and does not have to adapt the $\hat{\beta}^b$ formula.
 
 We implement the approach of Ferman and Pinto in the leading example of variation in group sizes. The function below uses the __average__ number of observations across time within a group in the model (*).
 
 
 ```r
 #Function that implements FP approach to a group-level model with variation in group sizes
-# y_{gt} = \alpha_i + \gamma_t + \beta'D_{gt} + \alpha'X_{gt} \epsilon_{it} 
+# y_{gt} = \alpha_g + \gamma_t + \beta'D_{gt} + \alpha'X_{gt} \epsilon_{it} 
 # Var(W_g) = A + B/N_g
 # Arguments are
 # outcome = character vector for the variable
@@ -424,7 +430,7 @@ ferman_pinto_test <- function(outcome, treatment, timevar, groupvar, nobsvar, da
     did_pair = sapply(1:sum(tpost_list!=0), function(x){
       tt = (tpost_list[tpost_list!=0])[x]
       
-      return(mean(res_correct[mat_timing$tpost==tt,]) - mean(res_correct[mat_timing$tpost==0,])) 
+      return(mean(res_correct[mat_timing$tpost==tt,x]) - mean(res_correct[mat_timing$tpost==0,x])) 
     })
     
     
@@ -473,10 +479,10 @@ ferman_pinto_test("coll", "merit", "year", "state", "nobs", merit_state)
 ## 7    10 0.08097166
 ## 
 ## $`P-value (equitailed)`
-## [1] 0.0092
+## [1] 0.027
 ## 
 ## $`P-value (absolute value)`
-## [1] 0.0113
+## [1] 0.0308
 ```
 
 
