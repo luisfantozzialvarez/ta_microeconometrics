@@ -558,11 +558,11 @@ placebo_func <- function(pret, postt){
   })
 }
 vv = placebo_func(pre_treat, post_treat)
-print(paste('P-value is', mean(vv[1]>=vv) ))
+print(paste('P-value is', mean(vv[1]<=vv) ))
 ```
 
 ```
-## [1] "P-value is 0.274509803921569"
+## [1] "P-value is 0.745098039215686"
 ```
 So we would not reject the "null" that there was no post-treatment effect, right?
 
@@ -612,11 +612,11 @@ conformal_chern <- function(pret, postt, q = 1){
 }
 
 vv = conformal_chern(pre_treat, post_treat, q =1)
-print(paste('P-value is', mean(vv[1]>=vv) ))
+print(paste('P-value is', mean(vv[1]<=vv) ))
 ```
 
 ```
-## [1] "P-value is 0.138157894736842"
+## [1] "P-value is 0.864035087719298"
 ```
 
 

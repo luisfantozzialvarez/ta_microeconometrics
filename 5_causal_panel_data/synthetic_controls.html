@@ -903,8 +903,8 @@ knitr::kable(values,  caption =&quot;Scenario 2: Different values of $J$&quot;, 
   })
 }
 vv = placebo_func(pre_treat, post_treat)
-print(paste(&#39;P-value is&#39;, mean(vv[1]&gt;=vv) ))</code></pre>
-<pre><code>## [1] &quot;P-value is 0.274509803921569&quot;</code></pre>
+print(paste(&#39;P-value is&#39;, mean(vv[1]&lt;=vv) ))</code></pre>
+<pre><code>## [1] &quot;P-value is 0.745098039215686&quot;</code></pre>
 <p>So we would not reject the “null” that there was no post-treatment effect, right?</p>
 <p>A recent procedure, in the SC context, whose validity has been demonstrated in some contexts is the inference method in Chernozhukov et al. (2019). Suppose we want to test the null <span class="math inline">\(H_0: \alpha_{1t} = 0, t \geq t^*\)</span>. They suggest the following procedure:</p>
 <ol style="list-style-type: decimal">
@@ -947,8 +947,8 @@ t + j - T &amp; \text{otherwise}
 }
 
 vv = conformal_chern(pre_treat, post_treat, q =1)
-print(paste(&#39;P-value is&#39;, mean(vv[1]&gt;=vv) ))</code></pre>
-<pre><code>## [1] &quot;P-value is 0.138157894736842&quot;</code></pre>
+print(paste(&#39;P-value is&#39;, mean(vv[1]&lt;=vv) ))</code></pre>
+<pre><code>## [1] &quot;P-value is 0.864035087719298&quot;</code></pre>
 </div>
 <div id="references" class="section level2">
 <h2>References</h2>
