@@ -745,7 +745,7 @@ ferman_pinto_test &lt;- function(outcome, treatment, timevar, groupvar, nobsvar,
     if(s!=0){
       
       data_case = data
-      data_case$residual_to_aggregate = (data_case$year &gt; (tmax - s))*data_case$residuals/s - (data_case$year &lt;= (tmax - s))*data_case$residuals/(Tt-s) 
+      data_case$residual_to_aggregate = (data_case$time &gt; (tmax - s))*data_case$residuals/s - (data_case$time &lt;= (tmax - s))*data_case$residuals/(Tt-s) 
       
       agg_mod_case = aggregate(data_case[&quot;residual_to_aggregate&quot;], by =list(&quot;group&quot; = data_case$group), FUN = sum,na.rm=T)
       
